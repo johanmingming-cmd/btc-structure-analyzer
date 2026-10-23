@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -21,9 +24,9 @@ jobs:
         with:
           gradle-version: "8.9"
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
       - name: Install Android platform and build tools
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
       - name: Upload debug APK
