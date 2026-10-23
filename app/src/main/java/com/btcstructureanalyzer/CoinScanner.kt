@@ -26,14 +26,27 @@ class CoinScanner(private val repository: BinanceRepository) {
         .build()
 
     suspend fun scan(limit: Int = 15): List<ScannedCoin> = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url("https://fapi.binance.com/fapi/v1/ticker/24hr")
-            .header("User-Agent", "BTCStructureAnalyzer-Futures/0.4")
-            .get().build()
-        val tickers = client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IllegalStateException("Gagal mengambil daftar market Binance (HTTP ${response.code})")
-            JSONArray(response.body?.string().orEmpty())
+        var tickerData: JSONArray? = null
+        var tickerError: Exception? = null
+        for (endpoint in listOf("https://fapi.binance.com/fapi/v1/ticker/24hr", "https://fapi1.binance.com/fapi/v1/ticker/24hr")) {
+            try {
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .header("User-Agent", "BTCStructureAnalyzer-Futures/0.4")
+                    .get().build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Market Futures HTTP ${response.code}")
+                    tickerData = JSONArray(response.body?.string().orEmpty())
+                }
+                if (tickerData != null) break
+            } catch (e: Exception) {
+                tickerError = e
+            }
         }
+        val tickers = tickerData ?: throw IllegalStateException(
+            "Gagal mengambil daftar market Binance USDⓈ-M Futures. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
+            tickerError
+        )
         val excluded = setOf("USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "EUR", "TRY", "BRL", "GBP", "BIDR", "IDRT")
         val candidates = buildList {
             for (i in 0 until tickers.length()) {
