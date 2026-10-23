@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,7 +112,7 @@ private fun AnalyzerApp(context: Context) {
                         else -> Icons.Default.Settings
                     }
                     NavigationBarItem(selected == item, onClick = { selected = item },
-                        icon = { Icon(icon, contentDescription = item) }, label = { Text(item, fontSize = 10.sp) },
+                        icon = { Icon(icon, contentDescription = item) }, label = { Text(item, fontSize = 9.sp, maxLines = 1, softWrap = false) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = Green, selectedTextColor = Green,
                             indicatorColor = Panel2, unselectedIconColor = Muted, unselectedTextColor = Muted))
                 }
@@ -337,8 +338,18 @@ private fun AnalyzerApp(context: Context) {
                         if (local in data.indices) {
                             val c = data[local]; val x = slot * (local + .5f)
                             val yy = y(swing.price)
-                            drawCircle(if (swing.isHigh) Red else Green, 4.5f, Offset(x,yy))
-                            drawLine(if (swing.isHigh) Red else Green, Offset(x,yy), Offset(x, (yy + if (swing.isHigh) 14f else -14f).coerceIn(0f,size.height)), 1f)
+                            val swingColor = if (swing.isHigh) Red else Green
+                            drawCircle(swingColor, 4.5f, Offset(x, yy))
+                            val labelY = (yy + if (swing.isHigh) -9f else 18f).coerceIn(12f, size.height - 4f)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                swing.label, x, labelY,
+                                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                    color = swingColor.toArgb()
+                                    textSize = 11f
+                                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                                    textAlign = android.graphics.Paint.Align.CENTER
+                                }
+                            )
                         }
                     }
                 }
