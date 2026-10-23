@@ -50,6 +50,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent { MaterialTheme(colorScheme = darkColorScheme(background = Navy, surface = Panel, primary = Blue, secondary = Green)) { AnalyzerApp(this) } }
     }
+
+    companion object {
+        const val EXTRA_OPEN_TAB = "open_tab"
+        const val EXTRA_SPOT_SIGNAL_NOTIFICATION = "spot_signal_notification"
+    }
 }
 
 private data class SavedRun(val time: Long, val price: Double, val bias: String, val note: String)
@@ -59,7 +64,15 @@ private data class SavedRun(val time: Long, val price: Double, val bias: String,
 private fun AnalyzerApp(context: Context) {
     val scope = rememberCoroutineScope()
     val repo = remember { BinanceRepository() }
-    var selected by remember { mutableStateOf("Home") }
+    var selected by remember { mutableStateOf(
+        (context as? Activity)?.intent?.getStringExtra(MainActivity.EXTRA_OPEN_TAB) ?: "Home"
+    ) }
+    var notificationDetails by remember {
+        mutableStateOf(
+            context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                .getString("spot_notification_details", null)
+        )
+    }
     var timeframe by remember { mutableStateOf("5m") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -274,6 +287,25 @@ private fun AnalyzerApp(context: Context) {
                     item {
                         Text("ANALISIS STRUKTUR", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Pembacaan 1H • 15M • 5M", color = Muted, fontSize = 12.sp)
+                    }
+                    if (notificationDetails != null) {
+                        item {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF102B2A)),
+                                shape = RoundedCornerShape(18.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Green.copy(alpha = .55f))
+                            ) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.NotificationsActive, null, tint = Green)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("SINYAL SPOT DARI NOTIFIKASI", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                    }
+                                    Text(notificationDetails.orEmpty(), color = Color.White, fontSize = 12.sp)
+                                    Text("Sinyal disimpan lokal dan tetap tersedia di sini sampai notifikasi sinyal berikutnya menggantikannya.", color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                        }
                     }
                     item { InterpretationCard(results) }
                     item { PredictionSummary(candles, results) }
