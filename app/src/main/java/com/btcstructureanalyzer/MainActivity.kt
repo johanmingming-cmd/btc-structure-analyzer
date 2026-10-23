@@ -121,8 +121,8 @@ private fun AnalyzerApp(context: Context) {
         },
         topBar = {
             TopAppBar(title = { Column {
-                Text("BTC Structure Analyzer", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                Text("BTC/USDT • Binance Public Data", fontSize = 11.sp, color = Muted)
+                Text("BTC Structure Analyzer", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text("BTC/USDT  •  Binance Public Data", fontSize = 13.sp, color = Muted)
             } }, actions = {
                 IconButton(onClick = { selected = "Notifikasi" }) {
                     Icon(Icons.Default.Notifications, contentDescription = "Notifikasi", tint = Color.White)
@@ -302,14 +302,14 @@ private fun AnalyzerApp(context: Context) {
     }
 }
 
-@Composable private fun Section(text: String) { Text(text, color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+@Composable private fun Section(text: String) { Text(text, color = Muted, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold) }
 
 @Composable private fun PriceCard(price: Double?, loading: Boolean, error: String?, lastRefresh: Long?) {
     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Harga BTC/USDT", color = Muted, fontSize = 12.sp)
+            Text("HARGA BTC/USDT", color = Muted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             Text(price?.let { "$" + "%,.2f".format(Locale.US, it) } ?: if (loading) "Memuat data…" else "Belum tersedia",
-                fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (error == null) Icons.Default.CloudDone else Icons.Default.CloudOff, null,
                     tint = if (error == null) Green else Red, modifier = Modifier.size(17.dp))
@@ -331,8 +331,8 @@ private fun AnalyzerApp(context: Context) {
 }
 @Composable private fun TrendCard(result: StructureResult?) {
     val color = trendColor(result?.trend)
-    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
+        Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(when(result?.trend) { Trend.BULLISH -> Icons.Default.TrendingUp; Trend.BEARISH -> Icons.Default.TrendingDown; else -> Icons.Default.Timeline },
                 null, tint = color, modifier = Modifier.size(36.dp))
             Spacer(Modifier.width(12.dp))
@@ -393,10 +393,10 @@ private fun AnalyzerApp(context: Context) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.CandlestickChart, null, tint = Blue)
                 Spacer(Modifier.width(8.dp))
-                Text("OHLC • Swing terkonfirmasi", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("OHLC  •  Swing terkonfirmasi", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             }
             Spacer(Modifier.height(8.dp))
-            Canvas(Modifier.fillMaxWidth().height(if (tall) 340.dp else 210.dp)) {
+            Canvas(Modifier.fillMaxWidth().height(if (tall) 390.dp else 250.dp)) {
                 val grid = Color(0xFF24364A)
                 for (i in 1..4) { val y = size.height * i / 5f; drawLine(grid, Offset(0f,y), Offset(size.width,y), 1f) }
                 val data = candles.takeLast(if (tall) 60 else 45)
