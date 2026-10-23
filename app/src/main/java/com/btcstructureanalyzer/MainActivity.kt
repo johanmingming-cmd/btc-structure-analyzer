@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -297,19 +298,113 @@ private fun AnalyzerApp(context: Context) {
                     }
                     if (notificationDetails != null) {
                         item {
+                            val detailLines = notificationDetails.orEmpty().lines()
+                            val detectedLine = detailLines.firstOrNull().orEmpty()
+                            val filterLine = detailLines.firstOrNull { it.startsWith("Filter:") }.orEmpty()
+                            val signalLines = detailLines.filter { it.contains(":") && (it.contains("BULLISH") || it.contains("BEARISH")) }
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF102B2A)),
-                                shape = RoundedCornerShape(18.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Green.copy(alpha = .55f))
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF062B27)),
+                                shape = RoundedCornerShape(20.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Green.copy(alpha = .9f))
                             ) {
-                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.NotificationsActive, null, tint = Green)
+                                        Icon(Icons.Default.NotificationsActive, null, tint = Green, modifier = Modifier.size(24.dp))
                                         Spacer(Modifier.width(8.dp))
-                                        Text("SINYAL SPOT DARI NOTIFIKASI", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                        Text("SINYAL SPOT DARI NOTIFIKASI", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                                     }
-                                    Text(notificationDetails.orEmpty(), color = Color.White, fontSize = 12.sp)
-                                    Text("Sinyal disimpan lokal dan tetap tersedia di sini sampai notifikasi sinyal berikutnya menggantikannya.", color = Muted, fontSize = 10.sp)
+                                    Text(detectedLine, color = Muted, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    signalLines.forEach { line ->
+                                        val bullish = line.contains("BULLISH")
+                                        val directionColor = if (bullish) Green else Red
+                                        val symbol = line.substringBefore(":").trim()
+                                        val score = Regex("skor\\s+(\\d+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val signalPrice = Regex("harga\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val volume = Regex("volume 24J\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Card(
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFF06231F)),
+                                                shape = RoundedCornerShape(14.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.5.dp, directionColor)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(if (bullish) Icons.Default.TrendingUp else Icons.Default.TrendingDown, null,
+                                                        tint = directionColor, modifier = Modifier.size(42.dp))
+                                                    Spacer(Modifier.width(12.dp))
+                                                    Text(
+                                                        if (bullish) "UP / BULLISH" else "DOWN / BEARISH",
+                                                        color = directionColor, fontWeight = FontWeight.Black, fontSize = 28.sp
+                                                    )
+                                                }
+                                            }
+                                            Text(symbol, color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                                                listOf(Triple("SKOR", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
+                                                    Card(
+                                                        modifier = Modifier.weight(if (metric.first == "SKOR") 0.8f else 1.2f),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF092721)),
+                                                        shape = RoundedCornerShape(11.dp),
+                                                        border = androidx.compose.foundation.BorderStroke(1.dp, directionColor.copy(alpha = .55f))
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 5.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Text(metric.first, color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text(metric.second, color = if (metric.third) directionColor else Color.White,
+                                                                fontWeight = FontWeight.Black, fontSize = if (metric.third) 27.sp else 15.sp,
+                                                                maxLines = 2)
+                                                            if (metric.first == "HARGA") Text("USDT", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            if (metric.first == "VOLUME 24J") Text("USDT", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(Icons.Default.FilterAlt, null, tint = Muted, modifier = Modifier.size(22.dp))
+                                        Text(filterLine.removePrefix("Filter:").trim(), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF082F25)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Green)
+                                        ) {
+                                            Row(Modifier.fillMaxWidth().padding(9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.TrendingUp, null, tint = Green, modifier = Modifier.size(22.dp))
+                                                Spacer(Modifier.width(5.dp))
+                                                Text("UP / BULLISH", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            }
+                                        }
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF30191F)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Red)
+                                        ) {
+                                            Row(Modifier.fillMaxWidth().padding(9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.TrendingDown, null, tint = Red, modifier = Modifier.size(22.dp))
+                                                Spacer(Modifier.width(5.dp))
+                                                Text("DOWN / BEARISH", color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                    Divider(color = Green.copy(alpha = .45f))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Info, null, tint = Muted, modifier = Modifier.size(22.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Analisis saja • bukan perintah transaksi.", color = Muted, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                    Divider(color = Green.copy(alpha = .35f))
+                                    Text("Sinyal disimpan lokal dan tetap tersedia di sini sampai notifikasi sinyal berikutnya menggantikannya.", color = Muted, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                                 }
                             }
                         }
