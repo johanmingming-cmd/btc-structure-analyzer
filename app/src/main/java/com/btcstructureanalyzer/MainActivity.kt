@@ -48,6 +48,12 @@ private val Muted = Color(0xFF9FB2C8)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Restore the user-enabled scanner when Android recreates the activity.
+        // The preference can remain ON even if Android has killed the foreground service.
+        val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("background_monitoring", false)) {
+            ContextCompat.startForegroundService(this, Intent(this, FuturesAutoScanService::class.java))
+        }
         setContent { MaterialTheme(colorScheme = darkColorScheme(background = Navy, surface = Panel, primary = Blue, secondary = Green)) { AnalyzerApp(this) } }
     }
 
