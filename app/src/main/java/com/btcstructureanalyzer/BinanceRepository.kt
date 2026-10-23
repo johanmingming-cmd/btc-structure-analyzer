@@ -16,7 +16,10 @@ class BinanceRepository {
 
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
+        // Preserve the original Spot market-data route that was used before the Futures experiment.
+        // data-api.binance.vision is a public market-data REST endpoint; fall back to Spot API hosts.
         val paths = listOf(
+            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
             "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
             "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit"
         )
