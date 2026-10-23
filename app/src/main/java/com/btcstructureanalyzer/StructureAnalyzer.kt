@@ -1,53 +1,82 @@
 package com.btcstructureanalyzer
 
 /**
- * Deterministic pivot 2-left / 2-right structure baseline.
- * Swings are confirmed only when the two right-hand candles are closed.
+ * Confirmed market-structure baseline: 2 candles on each side.
+ * The currently forming candle is excluded. Equal highs/lows are not forced
+ * into HH/LH or HL/LL labels; they keep the structure neutral.
  */
 object StructureAnalyzer {
+    private const val LEFT = 2
+    private const val RIGHT = 2
+
     fun analyze(timeframe: String, candles: List<Candle>): StructureResult {
-        if (candles.size < 7) return StructureResult(timeframe, Trend.UNCONFIRMED, emptyList(), "Data candle belum cukup")
+        if (candles.size < LEFT + RIGHT + 3) {
+            return StructureResult(timeframe, Trend.UNCONFIRMED, emptyList(), "Data candle belum cukup")
+        }
+
+        // Binance returns the newest (possibly still-open) candle last.
+        val closedCount = candles.size - 1
+        val confirmed = candles.take(closedCount)
+        if (confirmed.size < LEFT + RIGHT + 1) {
+            return StructureResult(timeframe, Trend.UNCONFIRMED, emptyList(), "Menunggu candle tertutup")
+        }
+
         val pivots = mutableListOf<Swing>()
-        val lastClosed = candles.size - 2
-        for (i in 2 until lastClosed - 1) {
-            if (i + 2 > lastClosed) break
-            val current = candles[i]
-            val left = candles.subList(i - 2, i)
-            val right = candles.subList(i + 1, i + 3)
+        for (i in LEFT until confirmed.size - RIGHT) {
+            val current = confirmed[i]
+            val left = confirmed.subList(i - LEFT, i)
+            val right = confirmed.subList(i + 1, i + RIGHT + 1)
             val isHigh = left.all { current.high > it.high } && right.all { current.high > it.high }
             val isLow = left.all { current.low < it.low } && right.all { current.low < it.low }
-            if (isHigh) pivots.add(Swing(i, current.high, true, current.openTime, ""))
-            if (isLow) pivots.add(Swing(i, current.low, false, current.openTime, ""))
+            // A wide outside candle can technically qualify as both; skip ambiguous pivots.
+            if (isHigh xor isLow) {
+                pivots += Swing(i, if (isHigh) current.high else current.low, isHigh, current.openTime, "")
+            }
         }
-        val clean = pivots.groupBy { it.index }.values.flatMap { group ->
-            if (group.size > 1) emptyList() else group
-        }.sortedBy { it.index }.toMutableList()
+
+        val clean = pivots.sortedBy { it.index }.toMutableList()
         var previousHigh: Swing? = null
         var previousLow: Swing? = null
         for (j in clean.indices) {
             val s = clean[j]
             if (s.isHigh) {
-                val label = previousHigh?.let { if (s.price > it.price) "HH" else "LH" } ?: "H"
+                val prev = previousHigh
+                val tolerance = maxOf(0.5, s.price * 0.00001)
+                val label = when {
+                    prev == null -> "H"
+                    s.price > prev.price + tolerance -> "HH"
+                    s.price < prev.price - tolerance -> "LH"
+                    else -> "EQH"
+                }
                 clean[j] = s.copy(label = label)
                 previousHigh = s
             } else {
-                val label = previousLow?.let { if (s.price > it.price) "HL" else "LL" } ?: "L"
+                val prev = previousLow
+                val tolerance = maxOf(0.5, s.price * 0.00001)
+                val label = when {
+                    prev == null -> "L"
+                    s.price > prev.price + tolerance -> "HL"
+                    s.price < prev.price - tolerance -> "LL"
+                    else -> "EQL"
+                }
                 clean[j] = s.copy(label = label)
                 previousLow = s
             }
         }
+
         val highs = clean.filter { it.isHigh }.takeLast(2)
-        val lows = clean.filter { !it.isHigh }.takeLast(2)
+        val lows = clean.filterNot { it.isHigh }.takeLast(2)
         val trend = when {
-            highs.size >= 2 && lows.size >= 2 && highs.last().label == "HH" && lows.last().label == "HL" -> Trend.BULLISH
-            highs.size >= 2 && lows.size >= 2 && highs.last().label == "LH" && lows.last().label == "LL" -> Trend.BEARISH
+            highs.size < 2 || lows.size < 2 -> Trend.UNCONFIRMED
+            highs.last().label == "HH" && lows.last().label == "HL" -> Trend.BULLISH
+            highs.last().label == "LH" && lows.last().label == "LL" -> Trend.BEARISH
             else -> Trend.SIDEWAYS
         }
         val summary = when (trend) {
             Trend.BULLISH -> "Struktur naik: HH + HL terdeteksi"
             Trend.BEARISH -> "Struktur turun: LH + LL terdeteksi"
-            Trend.SIDEWAYS -> "Struktur campuran; arah belum jelas"
-            Trend.UNCONFIRMED -> "Menunggu data candle yang cukup"
+            Trend.SIDEWAYS -> "Struktur campuran atau high/low setara; arah belum jelas"
+            Trend.UNCONFIRMED -> "Swing terkonfirmasi belum cukup untuk menentukan arah"
         }
         return StructureResult(timeframe, trend, clean.takeLast(12), summary)
     }
