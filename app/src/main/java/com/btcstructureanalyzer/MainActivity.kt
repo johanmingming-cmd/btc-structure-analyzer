@@ -10,9 +10,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -285,7 +282,7 @@ private fun AnalyzerApp(context: Context) {
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("SCANNER OTOMATIS • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Memilih pasangan USDT likuid dan menilai struktur 1H • 15M • 5M. BTC tidak masuk daftar kandidat.", color = Muted, fontSize = 11.sp)
+                                Text("Sumber Binance USDⓈ-M Futures • pasangan USDT perpetual likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
@@ -301,7 +298,7 @@ private fun AnalyzerApp(context: Context) {
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
-                                if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text(if (scanCompleted) "Pemindaian selesai, tetapi belum ada koin yang memenuhi semua konfirmasi 1H • 15M • 5M. Coba pindai lagi beberapa saat nanti." else "Tekan Pindai untuk mencari kandidat terbaru.", color = if (scanCompleted) Color(0xFFFFC857) else Muted, fontSize = 12.sp)
+                                if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text(if (scanCompleted) "Pemindaian Futures selesai, tetapi belum ada koin yang memenuhi semua konfirmasi 1H • 15M • 5M. Coba lagi nanti." else "Tekan Pindai untuk mencari kandidat terbaru.", color = if (scanCompleted) Color(0xFFFFC857) else Muted, fontSize = 12.sp)
                                 scannedCoins.forEachIndexed { index, coin ->
                                     Divider(color = Color(0xFF20374B))
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -419,7 +416,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (autoRefresh) "Pemantauan latar belakang aktif (interval minimum 15 menit)" else "Pemantauan latar belakang tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Auto scan Futures aktif • target setiap 10 menit" else "Auto scan Futures tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -438,7 +435,7 @@ private fun AnalyzerApp(context: Context) {
                                 }
                                 Divider(color = Color(0xFF24364A))
                             }
-                            Text(if (autoRefresh) "WorkManager aktif; penghemat baterai Android dapat menunda pengecekan." else "Aktifkan pemantauan di Pengaturan untuk notifikasi perubahan bias 1H.", color = Muted, fontSize = 11.sp)
+                            Text(if (autoRefresh) "Layanan aktif dengan notifikasi permanen. Android tetap dapat membatasi layanan karena baterai atau kebijakan sistem." else "Aktifkan auto scan di Pengaturan. Notifikasi dikirim saat ada sinyal baru; tidak ada order otomatis.", color = Muted, fontSize = 11.sp)
                             Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp)) { Text(if (loading) "MEMPERBARUI…" else "PERBARUI STRUKTUR") }
                         }
@@ -456,7 +453,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Sumber data", color = Muted, fontSize = 11.sp)
-                                    Text("Binance Public Data • BTC/USDT", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Binance USDⓈ-M Futures • USDT Perpetual", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -465,7 +462,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Manual refresh + pemantauan opsional setiap ≥15 menit", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scan manual + auto scan 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -483,10 +480,9 @@ private fun AnalyzerApp(context: Context) {
                                         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && context is Activity) {
                                             ActivityCompat.requestPermissions(context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
                                         }
-                                        val request = PeriodicWorkRequestBuilder<StructureMonitorWorker>(15, TimeUnit.MINUTES).build()
-                                        WorkManager.getInstance(context).enqueueUniquePeriodicWork("btc_structure_monitor", ExistingPeriodicWorkPolicy.UPDATE, request)
+                                        ContextCompat.startForegroundService(context, android.content.Intent(context, FuturesAutoScanService::class.java))
                                     } else {
-                                        WorkManager.getInstance(context).cancelUniqueWork("btc_structure_monitor")
+                                        context.stopService(android.content.Intent(context, FuturesAutoScanService::class.java))
                                     }
                                 })
                             }

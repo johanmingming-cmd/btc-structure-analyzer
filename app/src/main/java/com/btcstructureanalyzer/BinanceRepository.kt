@@ -17,13 +17,13 @@ class BinanceRepository {
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
         val paths = listOf(
-            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
-            "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=$interval&limit=$limit"
+            "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit",
+            "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"
         )
         var lastError: Exception? = null
         for (url in paths) {
             try {
-                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer/0.2").get().build()
+                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer-Futures/0.4").get().build()
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw IllegalStateException("Server candle membalas HTTP ${response.code}")
                     val body = response.body?.string().orEmpty()
@@ -40,6 +40,6 @@ class BinanceRepository {
                 }
             } catch (e: Exception) { lastError = e }
         }
-        throw IllegalStateException("Gagal menghubungi endpoint data Binance. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
+        throw IllegalStateException("Gagal menghubungi endpoint Binance USDⓈ-M Futures. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
     }
 }
