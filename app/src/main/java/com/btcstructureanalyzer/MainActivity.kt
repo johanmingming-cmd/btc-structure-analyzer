@@ -72,6 +72,9 @@ private fun AnalyzerApp(context: Context) {
     var lastRefresh by remember { mutableStateOf<Long?>(null) }
     var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
+    var scanLoading by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
+    var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
 
     fun loadHistory() {
         val raw = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getString("history", "") ?: ""
@@ -276,6 +279,45 @@ private fun AnalyzerApp(context: Context) {
                     }
                     item { InterpretationCard(results) }
                     item { PredictionSummary(candles, results) }
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("SCANNER OTOMATIS • TOP 10", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Memilih pasangan USDT likuid dan menilai struktur 1H • 15M • 5M. BTC tidak masuk daftar kandidat.", color = Muted, fontSize = 11.sp)
+                                Button(onClick = {
+                                    scope.launch {
+                                        scanLoading = true
+                                        scanError = null
+                                        try { scannedCoins = CoinScanner(repo).scan(10) }
+                                        catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
+                                        finally { scanLoading = false }
+                                    }
+                                }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 10 COIN BINANCE")
+                                }
+                                if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
+                                scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
+                                if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text("Tekan Pindai untuk mencari kandidat terbaru.", color = Muted, fontSize = 12.sp)
+                                scannedCoins.forEachIndexed { index, coin ->
+                                    Divider(color = Color(0xFF20374B))
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("${index + 1}. ${coin.symbol.removeSuffix("USDT")}/USDT", color = Color.White, fontWeight = FontWeight.Bold)
+                                            Text("1H ${trendLabel(coin.trend1h)} • 15M ${trendLabel(coin.trend15m)} • 5M ${trendLabel(coin.trend5m)}", color = Muted, fontSize = 10.sp)
+                                            Text(coin.reason, color = Muted, fontSize = 10.sp)
+                                            Text("Volume 24J: $" + "%,.0f".format(Locale.US, coin.quoteVolume), color = Muted, fontSize = 10.sp)
+                                        }
+                                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text("$" + "%,.5f".format(Locale.US, coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
+                                        }
+                                    }
+                                }
+                                if (scannedCoins.isNotEmpty()) Text("Skor adalah peringkat heuristik, bukan probabilitas menang. Hasil bukan saran transaksi.", color = Muted, fontSize = 10.sp)
+                            }
+                        }
+                    }
                     listOf("1h", "15m", "5m").forEach { tf ->
                         item { Section("TIMEFRAME ${tf.uppercase()}") }
                         item { TrendCard(results[tf]) }
