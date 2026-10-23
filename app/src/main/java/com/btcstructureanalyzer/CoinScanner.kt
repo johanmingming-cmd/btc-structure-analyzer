@@ -25,7 +25,7 @@ class CoinScanner(private val repository: BinanceRepository) {
         .callTimeout(18, TimeUnit.SECONDS)
         .build()
 
-    suspend fun scan(limit: Int = 10): List<ScannedCoin> = withContext(Dispatchers.IO) {
+    suspend fun scan(limit: Int = 15): List<ScannedCoin> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("https://data-api.binance.vision/api/v3/ticker/24hr")
             .header("User-Agent", "BTCStructureAnalyzer/0.3")
@@ -47,7 +47,7 @@ class CoinScanner(private val repository: BinanceRepository) {
                 val lastPrice = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
                 if (quoteVolume >= 5_000_000.0 && lastPrice > 0.0) add(Triple(symbol, lastPrice, quoteVolume))
             }
-        }.sortedByDescending { it.third }.take(20)
+        }.sortedByDescending { it.third }.take(40)
 
         val output = mutableListOf<ScannedCoin>()
         for ((symbol, lastPrice, quoteVolume) in candidates) {
@@ -59,11 +59,9 @@ class CoinScanner(private val repository: BinanceRepository) {
                 val r15 = StructureAnalyzer.analyze("15m", c15)
                 val r1h = StructureAnalyzer.analyze("1h", c1h)
 
-                // Only accept full directional agreement across all three timeframes.
-                val sameBullish = r1h.trend == Trend.BULLISH &&
-                    r15.trend == Trend.BULLISH && r5.trend == Trend.BULLISH
-                val sameBearish = r1h.trend == Trend.BEARISH &&
-                    r15.trend == Trend.BEARISH && r5.trend == Trend.BEARISH
+                // Keep higher-timeframe confirmation strict, while allowing 5m to confirm through closed-candle momentum.
+                val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
+                val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 if (!sameBullish && !sameBearish) continue
 
                 // Confirmation uses only closed 5m candles; ignore the currently forming candle.
@@ -81,12 +79,12 @@ class CoinScanner(private val repository: BinanceRepository) {
                 val volumeScore = (kotlin.math.ln(quoteVolume.coerceAtLeast(1.0)) * 2.0).toInt().coerceIn(0, 40)
                 val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
                 val directionText = if (sameBullish) "bullish" else "bearish"
-                val reason = "Terkonfirmasi: 1H, 15M, 5M searah $directionText + momentum candle 5M tertutup"
+                val reason = "Konfirmasi: struktur 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason))
             } catch (_: Exception) {
                 // Skip a symbol whose data is unavailable; keep the scanner moving.
             }
         }
-        output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume })
+        output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
     }
 }
