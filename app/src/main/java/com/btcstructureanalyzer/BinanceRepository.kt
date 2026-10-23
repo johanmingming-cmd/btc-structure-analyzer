@@ -18,7 +18,7 @@ class BinanceRepository {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
         val paths = listOf(
             "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit",
-            "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"
+            "https://fapi1.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"
         )
         var lastError: Exception? = null
         for (url in paths) {
