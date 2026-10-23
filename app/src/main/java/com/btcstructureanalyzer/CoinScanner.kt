@@ -28,14 +28,14 @@ class CoinScanner(private val repository: BinanceRepository) {
     suspend fun scan(limit: Int = 15): List<ScannedCoin> = withContext(Dispatchers.IO) {
         var tickerData: JSONArray? = null
         var tickerError: Exception? = null
-        for (endpoint in listOf("https://fapi.binance.com/fapi/v1/ticker/24hr", "https://fapi1.binance.com/fapi/v1/ticker/24hr")) {
+        for (endpoint in listOf("https://api.binance.com/api/v3/ticker/24hr", "https://api1.binance.com/api/v3/ticker/24hr")) {
             try {
                 val request = Request.Builder()
                     .url(endpoint)
-                    .header("User-Agent", "BTCStructureAnalyzer-Futures/0.4")
+                    .header("User-Agent", "BTCStructureAnalyzer-Spot/0.5")
                     .get().build()
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("Market Futures HTTP ${response.code}")
+                    if (!response.isSuccessful) throw IllegalStateException("Market Spot HTTP ${response.code}")
                     tickerData = JSONArray(response.body?.string().orEmpty())
                 }
                 if (tickerData != null) break
@@ -44,7 +44,7 @@ class CoinScanner(private val repository: BinanceRepository) {
             }
         }
         val tickers = tickerData ?: throw IllegalStateException(
-            "Gagal mengambil daftar market Binance USDⓈ-M Futures. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
+            "Gagal mengambil daftar market Binance Spot. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
             tickerError
         )
         val excluded = setOf("USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "EUR", "TRY", "BRL", "GBP", "BIDR", "IDRT")
@@ -72,7 +72,7 @@ class CoinScanner(private val repository: BinanceRepository) {
                 val r15 = StructureAnalyzer.analyze("15m", c15)
                 val r1h = StructureAnalyzer.analyze("1h", c1h)
 
-                // Keep higher-timeframe confirmation strict, while allowing 5m to confirm through closed-candle momentum.
+                // Spot market scanner: higher-timeframe structure must agree.
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 if (!sameBullish && !sameBearish) continue
@@ -92,7 +92,7 @@ class CoinScanner(private val repository: BinanceRepository) {
                 val volumeScore = (kotlin.math.ln(quoteVolume.coerceAtLeast(1.0)) * 2.0).toInt().coerceIn(0, 40)
                 val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
                 val directionText = if (sameBullish) "bullish" else "bearish"
-                val reason = "Konfirmasi: struktur 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
+                val reason = "Konfirmasi: struktur Spot 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason))
             } catch (_: Exception) {
                 // Skip a symbol whose data is unavailable; keep the scanner moving.
