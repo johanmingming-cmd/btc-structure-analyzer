@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -72,15 +73,30 @@ class FuturesAutoScanService : Service() {
         if (newSignals.isEmpty()) return
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val details = results.filter { "${it.symbol}|${signalDirection(it)}" in newSignals }
-            .take(5)
-            .joinToString("\n") { "${it.symbol}: ${signalDirection(it)} • skor ${it.score}" }
-        val extra = (newSignals.size - 5).coerceAtLeast(0)
-        val body = if (extra > 0) "$details\n+ $extra sinyal lainnya" else details
+        val detectedAt = System.currentTimeMillis()
+        val matched = results.filter { "${it.symbol}|${signalDirection(it)}" in newSignals }
+        val details = matched.joinToString("\n") {
+            "${it.symbol}: ${signalDirection(it)} • skor ${it.score} • harga ${"%,.8f".format(java.util.Locale.US, it.price)} • volume 24J ${"%,.0f".format(java.util.Locale.US, it.quoteVolume)}"
+        }
+        val savedDetails = "Terdeteksi ${java.text.SimpleDateFormat("dd MMM yyyy • HH:mm:ss", java.util.Locale("id", "ID")).format(java.util.Date(detectedAt))}\n$details\n\nFilter: Futures USDT perpetual + Spot volume ≥ $20 juta + perubahan 24J maksimal ±12% + spread ≤ 0,50%. Analisis saja; bukan perintah transaksi."
+        prefs.edit().putString("spot_notification_details", savedDetails).putLong("spot_notification_time", detectedAt).apply()
+        val extra = (matched.size - 5).coerceAtLeast(0)
+        val body = matched.take(5).joinToString("\n") { "${it.symbol}: ${signalDirection(it)} • skor ${it.score}" } +
+            if (extra > 0) "\n+ $extra sinyal lainnya" else ""
+        val openAnalysis = Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_OPEN_TAB, "Analisis")
+            putExtra(MainActivity.EXTRA_SPOT_SIGNAL_NOTIFICATION, true)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentIntent = PendingIntent.getActivity(
+            this, SIGNAL_ID, openAnalysis,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         manager.notify(SIGNAL_ID, NotificationCompat.Builder(this, SIGNAL_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_btc)
             .setContentTitle("BTC Structure • Sinyal Spot baru")
             .setContentText("${newSignals.size} sinyal baru terdeteksi")
+            .setContentIntent(contentIntent)
             .setStyle(NotificationCompat.BigTextStyle().bigText("$body\nAnalisis saja • tidak ada order otomatis"))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
