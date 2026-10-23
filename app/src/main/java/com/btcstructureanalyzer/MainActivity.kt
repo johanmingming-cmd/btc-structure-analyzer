@@ -321,7 +321,7 @@ private fun AnalyzerApp(context: Context) {
                                         scanCompleted = false
                                         scanError = null
                                         scannedCoins = emptyList()
-                                        try { scannedCoins = CoinScanner(repo).scan(15) }
+                                        try { scannedCoins = CoinScanner(repo, context).scan(15) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
                                         finally { scanLoading = false; scanCompleted = true }
                                     }
