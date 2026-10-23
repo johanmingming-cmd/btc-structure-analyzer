@@ -284,7 +284,7 @@ private fun AnalyzerApp(context: Context) {
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("SCANNER OTOMATIS • TOP 10", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("SCANNER OTOMATIS • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                                 Text("Memilih pasangan USDT likuid dan menilai struktur 1H • 15M • 5M. BTC tidak masuk daftar kandidat.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
@@ -292,12 +292,12 @@ private fun AnalyzerApp(context: Context) {
                                         scanCompleted = false
                                         scanError = null
                                         scannedCoins = emptyList()
-                                        try { scannedCoins = CoinScanner(repo).scan(10) }
+                                        try { scannedCoins = CoinScanner(repo).scan(15) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
                                         finally { scanLoading = false; scanCompleted = true }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 10 COIN BINANCE")
+                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 15 COIN BINANCE")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
