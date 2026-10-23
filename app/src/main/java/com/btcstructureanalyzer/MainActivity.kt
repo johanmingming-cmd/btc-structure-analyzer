@@ -275,6 +275,7 @@ private fun AnalyzerApp(context: Context) {
                         Text("Pembacaan 1H • 15M • 5M", color = Muted, fontSize = 12.sp)
                     }
                     item { InterpretationCard(results) }
+                    item { PredictionSummary(candles, results) }
                     listOf("1h", "15m", "5m").forEach { tf ->
                         item { Section("TIMEFRAME ${tf.uppercase()}") }
                         item { TrendCard(results[tf]) }
