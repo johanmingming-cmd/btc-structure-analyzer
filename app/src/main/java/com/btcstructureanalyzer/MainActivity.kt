@@ -123,9 +123,14 @@ private fun AnalyzerApp(context: Context) {
             TopAppBar(title = { Column {
                 Text("BTC Structure Analyzer", fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Text("BTC/USDT • Binance Public Data", fontSize = 11.sp, color = Muted)
-            } }, actions = { IconButton(onClick = { refresh() }, enabled = !loading) {
-                Icon(Icons.Default.Refresh, contentDescription = "Perbarui data", tint = Green)
-            } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy, titleContentColor = Color.White))
+            } }, actions = {
+                IconButton(onClick = { selected = "Notifikasi" }) {
+                    Icon(Icons.Default.Notifications, contentDescription = "Notifikasi", tint = Color.White)
+                }
+                IconButton(onClick = { refresh() }, enabled = !loading) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Perbarui data", tint = Green)
+                }
+            }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy, titleContentColor = Color.White))
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).background(Navy), contentPadding = PaddingValues(16.dp),
@@ -144,6 +149,13 @@ private fun AnalyzerApp(context: Context) {
                     item { Section("STRUKTUR TERBARU • 5M") }
                     item { CandleChart(candles["5m"].orEmpty(), results["5m"]) }
                     item { Button(onClick = { selected = "Chart" }, modifier = Modifier.fillMaxWidth()) { Text("Buka grafik lengkap") } }
+                    item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { selected = "Detail Struktur" }, modifier = Modifier.weight(1f)) { Text("Detail struktur") }
+                        OutlinedButton(onClick = { selected = "Level Kunci" }, modifier = Modifier.weight(1f)) { Text("Level kunci") }
+                    } }
+                    item { OutlinedButton(onClick = { selected = "Notifikasi" }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Notifications, null); Spacer(Modifier.width(8.dp)); Text("Pusat notifikasi")
+                    } }
                 }
                 "Chart" -> {
                     item { Section("GRAFIK CANDLESTICK") }
@@ -187,6 +199,79 @@ private fun AnalyzerApp(context: Context) {
                         history = emptyList()
                         context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).edit().remove("history").apply()
                     }, modifier = Modifier.fillMaxWidth()) { Text("Hapus riwayat") } }
+                }
+                "Detail Struktur" -> {
+                    item { Section("DETAIL STRUKTUR • BTC/USDT") }
+                    item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("5m", "15m", "1h").forEach { tf ->
+                            FilterChip(selected = timeframe == tf, onClick = { timeframe = tf }, label = { Text(tf.uppercase()) })
+                        }
+                    } }
+                    item { TrendCard(results[timeframe]) }
+                    item { CandleChart(candles[timeframe].orEmpty(), results[timeframe], tall = true) }
+                    item { Section("INFORMASI STRUKTUR") }
+                    item { DetailCard(results[timeframe]) }
+                    item { Section("KONTEKS MULTI-TIMEFRAME") }
+                    item { InterpretationCard(results) }
+                }
+                "Level Kunci" -> {
+                    item { Section("LEVEL KUNCI • ${timeframe.uppercase()}") }
+                    item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("5m", "15m", "1h").forEach { tf ->
+                            FilterChip(selected = timeframe == tf, onClick = { timeframe = tf }, label = { Text(tf.uppercase()) })
+                        }
+                    } }
+                    val swings = results[timeframe]?.swings.orEmpty()
+                    val highs = swings.filter { it.isHigh }.takeLast(2).reversed()
+                    val lows = swings.filter { !it.isHigh }.takeLast(2).reversed()
+                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Resistance", color = Red, fontWeight = FontWeight.Bold)
+                            if (highs.isEmpty()) Text("Belum ada swing high terkonfirmasi", color = Muted, fontSize = 12.sp)
+                            highs.forEachIndexed { i, s -> Row {
+                                Text("R${i+1}", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
+                                Text("$" + "%,.2f".format(Locale.US, s.price), color = Color.White)
+                            } }
+                            Divider(color = Panel2)
+                            Text("Support", color = Green, fontWeight = FontWeight.Bold)
+                            if (lows.isEmpty()) Text("Belum ada swing low terkonfirmasi", color = Muted, fontSize = 12.sp)
+                            lows.forEachIndexed { i, s -> Row {
+                                Text("S${i+1}", color = Green, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
+                                Text("$" + "%,.2f".format(Locale.US, s.price), color = Color.White)
+                            } }
+                        }
+                    } }
+                    item { CandleChart(candles[timeframe].orEmpty(), results[timeframe], tall = true) }
+                    item { Text("Level dihitung dari swing yang sudah terkonfirmasi, bukan prediksi harga atau jaminan breakout.", color = Muted, fontSize = 12.sp) }
+                }
+                "Notifikasi" -> {
+                    item { Section("PUSAT NOTIFIKASI") }
+                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Ringkasan struktur terbaru", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Text("Halaman ini merangkum kondisi struktur yang berhasil dimuat. Notifikasi sistem dan pemantauan layar mati belum aktif pada versi ini.", color = Muted, fontSize = 12.sp)
+                            Divider(color = Panel2)
+                            listOf("1h", "15m", "5m").forEach { tf ->
+                                val r = results[tf]
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(when(r?.trend) {
+                                        Trend.BULLISH -> Icons.Default.TrendingUp
+                                        Trend.BEARISH -> Icons.Default.TrendingDown
+                                        else -> Icons.Default.Timeline
+                                    }, null, tint = trendColor(r?.trend))
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("${tf.uppercase()} • ${trendLabel(r?.trend)}", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                        Text(r?.summary ?: "Belum ada data struktur", color = Muted, fontSize = 12.sp)
+                                    }
+                                }
+                                Divider(color = Panel2)
+                            }
+                            Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (loading) "Memperbarui…" else "Perbarui struktur")
+                            }
+                        }
+                    } }
                 }
                 else -> {
                     item { Section("PENGATURAN") }
