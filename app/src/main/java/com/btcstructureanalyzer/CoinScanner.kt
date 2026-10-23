@@ -28,7 +28,7 @@ class CoinScanner(private val repository: BinanceRepository) {
     suspend fun scan(limit: Int = 15): List<ScannedCoin> = withContext(Dispatchers.IO) {
         var tickerData: JSONArray? = null
         var tickerError: Exception? = null
-        for (endpoint in listOf("https://api.binance.com/api/v3/ticker/24hr", "https://api1.binance.com/api/v3/ticker/24hr")) {
+        for (endpoint in listOf("https://data-api.binance.vision/api/v3/ticker/24hr", "https://api.binance.com/api/v3/ticker/24hr", "https://api1.binance.com/api/v3/ticker/24hr")) {
             try {
                 val request = Request.Builder()
                     .url(endpoint)
