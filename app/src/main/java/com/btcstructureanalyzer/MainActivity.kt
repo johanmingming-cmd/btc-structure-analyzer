@@ -75,6 +75,7 @@ private fun AnalyzerApp(context: Context) {
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
+    var scanCompleted by remember { mutableStateOf(false) }
 
     fun loadHistory() {
         val raw = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getString("history", "") ?: ""
@@ -288,17 +289,19 @@ private fun AnalyzerApp(context: Context) {
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
+                                        scanCompleted = false
                                         scanError = null
+                                        scannedCoins = emptyList()
                                         try { scannedCoins = CoinScanner(repo).scan(10) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanLoading = false }
+                                        finally { scanLoading = false; scanCompleted = true }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 10 COIN BINANCE")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
-                                if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text("Tekan Pindai untuk mencari kandidat terbaru.", color = Muted, fontSize = 12.sp)
+                                if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text(if (scanCompleted) "Pemindaian selesai, tetapi belum ada koin yang memenuhi semua konfirmasi 1H • 15M • 5M. Coba pindai lagi beberapa saat nanti." else "Tekan Pindai untuk mencari kandidat terbaru.", color = if (scanCompleted) Color(0xFFFFC857) else Muted, fontSize = 12.sp)
                                 scannedCoins.forEachIndexed { index, coin ->
                                     Divider(color = Color(0xFF20374B))
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
