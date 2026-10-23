@@ -282,7 +282,7 @@ private fun AnalyzerApp(context: Context) {
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("SCANNER OTOMATIS • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Sumber Binance USDⓈ-M Futures • pasangan USDT perpetual likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
+                                Text("Sumber Binance Spot • pasangan USDT likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
@@ -416,7 +416,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (autoRefresh) "Auto scan Futures aktif • target setiap 10 menit" else "Auto scan Futures tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Auto scan Spot aktif • target setiap 10 menit" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -453,7 +453,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Sumber data", color = Muted, fontSize = 11.sp)
-                                    Text("Binance USDⓈ-M Futures • USDT Perpetual", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Binance Spot • pasangan USDT", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -462,7 +462,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Scan manual + auto scan 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scan manual + auto scan Spot setiap 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
