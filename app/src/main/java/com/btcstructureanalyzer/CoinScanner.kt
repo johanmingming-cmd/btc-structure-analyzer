@@ -27,8 +27,8 @@ class CoinScanner(private val repository: BinanceRepository) {
 
     suspend fun scan(limit: Int = 15): List<ScannedCoin> = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url("https://data-api.binance.vision/api/v3/ticker/24hr")
-            .header("User-Agent", "BTCStructureAnalyzer/0.3")
+            .url("https://fapi.binance.com/fapi/v1/ticker/24hr")
+            .header("User-Agent", "BTCStructureAnalyzer-Futures/0.4")
             .get().build()
         val tickers = client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IllegalStateException("Gagal mengambil daftar market Binance (HTTP ${response.code})")
