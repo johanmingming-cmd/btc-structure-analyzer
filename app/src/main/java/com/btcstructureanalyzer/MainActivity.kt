@@ -103,94 +103,191 @@ private fun AnalyzerApp(context: Context) {
     Scaffold(
         containerColor = Navy,
         bottomBar = {
-            NavigationBar(containerColor = Panel) {
+            NavigationBar(containerColor = Color(0xFF0A1422), tonalElevation = 0.dp) {
                 listOf("Home", "Chart", "Analisis", "Riwayat", "Pengaturan").forEach { item ->
                     val icon = when(item) {
                         "Home" -> Icons.Default.Home
-                        "Chart" -> Icons.Default.ShowChart
+                        "Chart" -> Icons.Default.CandlestickChart
                         "Analisis" -> Icons.Default.Analytics
                         "Riwayat" -> Icons.Default.History
                         else -> Icons.Default.Settings
                     }
                     NavigationBarItem(selected == item, onClick = { selected = item },
-                        icon = { Icon(icon, contentDescription = item) }, label = { Text(item, fontSize = 9.sp, maxLines = 1, softWrap = false) },
+                        icon = { Icon(icon, contentDescription = item) },
+                        label = { Text(item, fontSize = 10.sp, maxLines = 1, softWrap = false) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = Green, selectedTextColor = Green,
-                            indicatorColor = Panel2, unselectedIconColor = Muted, unselectedTextColor = Muted))
+                            indicatorColor = Color(0xFF123044), unselectedIconColor = Muted, unselectedTextColor = Muted))
                 }
             }
         },
         topBar = {
-            TopAppBar(title = { Column {
-                Text("BTC Structure Analyzer", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                Text("BTC/USDT  •  Binance Public Data", fontSize = 13.sp, color = Muted)
-            } }, actions = {
-                IconButton(onClick = { selected = "Notifikasi" }) {
-                    Icon(Icons.Default.Notifications, contentDescription = "Notifikasi", tint = Color.White)
+            Column(Modifier.fillMaxWidth().background(Navy)) {
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("BTC STRUCTURE", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                        Text("NEURAL MARKET ANALYZER  •  BTC/USDT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
+                    }
+                    IconButton(onClick = { selected = "Notifikasi" }) {
+                        Icon(Icons.Default.NotificationsNone, contentDescription = "Notifikasi", tint = Color.White)
+                    }
+                    IconButton(onClick = { refresh() }, enabled = !loading) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Perbarui data", tint = Green)
+                    }
                 }
-                IconButton(onClick = { refresh() }, enabled = !loading) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Perbarui data", tint = Green)
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Box(Modifier.size(7.dp).background(if (error == null) Green else Red, RoundedCornerShape(50)))
+                        Text(if (error != null) "KONEKSI TERGANGGU" else if (loading) "MENGAMBIL DATA" else "BINANCE PUBLIC DATA",
+                            color = if (error != null) Red else Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(lastRefresh?.let { "UPDATE " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: "MENUNGGU DATA",
+                        color = Muted, fontSize = 10.sp)
                 }
-            }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Navy, titleContentColor = Color.White))
+                Divider(color = Color(0xFF1B2B3D), thickness = 1.dp)
+            }
         }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).background(Navy), contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(Modifier.fillMaxSize().padding(padding).background(Navy),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when (selected) {
                 "Home" -> {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("MARKET OVERVIEW", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.4.sp)
+                            Text("BTC Structure Dashboard", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Struktur harga multi-timeframe", color = Muted, fontSize = 12.sp)
+                        }
+                    }
                     item { PriceCard(price, loading, error, lastRefresh) }
                     if (error != null) item { ErrorCard(error!!) }
-                    item { Section("ARAH UTAMA • 1H"); TrendCard(results["1h"]) }
-                    item { Section("RINGKASAN MULTI-TIMEFRAME") }
-                    item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("5m", "15m", "1h").forEach { tf -> Box(Modifier.weight(1f)) { TrendMiniCard(tf, results[tf]) } }
-                    } }
-                    item { Section("INTERPRETASI") }
-                    item { InterpretationCard(results) }
-                    item { Section("STRUKTUR TERBARU • 5M") }
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            listOf("1h", "15m", "5m").forEach { tf ->
+                                val result = results[tf]
+                                Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel),
+                                    shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
+                                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(tf.uppercase(), color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Icon(when(result?.trend) {
+                                            Trend.BULLISH -> Icons.Default.TrendingUp
+                                            Trend.BEARISH -> Icons.Default.TrendingDown
+                                            else -> Icons.Default.Timeline
+                                        }, null, tint = trendColor(result?.trend), modifier = Modifier.size(23.dp))
+                                        Text(trendLabel(result?.trend), color = trendColor(result?.trend), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                        Text(result?.swings?.takeLast(2)?.joinToString(" / ") { it.label } ?: "Belum ada swing",
+                                            color = Color.White, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2032)),
+                            shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Blue.copy(alpha = .45f))) {
+                            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AccountTree, null, tint = Blue)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("STRUKTUR UTAMA • 1H", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = .8.sp)
+                                }
+                                Text(trendLabel(results["1h"]?.trend), color = trendColor(results["1h"]?.trend), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(results["1h"]?.summary ?: "Menunggu struktur candle terkonfirmasi",
+                                    color = Color.White, fontSize = 13.sp)
+                                Divider(color = Color(0xFF254057))
+                                Text("Interpretasi multi-timeframe", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(when {
+                                    results.isEmpty() -> "Data belum tersedia. Perbarui data untuk membaca struktur."
+                                    else -> "1H menentukan bias utama • 15M memberi konteks • 5M menunjukkan pergerakan jangka pendek."
+                                }, color = Muted, fontSize = 12.sp)
+                                Text("Kesimpulan prediksi belum ditampilkan pada tahap perbaikan UI ini.",
+                                    color = Amber, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    item {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("PRICE STRUCTURE", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Text("BTC/USDT • 5 MINUTES", color = Muted, fontSize = 10.sp)
+                            }
+                            TextButton(onClick = { timeframe = "5m"; selected = "Chart" }) { Text("BUKA CHART  →", color = Blue, fontSize = 11.sp) }
+                        }
+                    }
                     item { CandleChart(candles["5m"].orEmpty(), results["5m"]) }
-                    item { Button(onClick = { selected = "Chart" }, modifier = Modifier.fillMaxWidth()) { Text("Buka grafik lengkap") } }
-                    item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { selected = "Detail Struktur" }, modifier = Modifier.weight(1f)) { Text("Detail struktur") }
-                        OutlinedButton(onClick = { selected = "Level Kunci" }, modifier = Modifier.weight(1f)) { Text("Level kunci") }
-                    } }
-                    item { OutlinedButton(onClick = { selected = "Notifikasi" }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.Notifications, null); Spacer(Modifier.width(8.dp)); Text("Pusat notifikasi")
-                    } }
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            OutlinedButton(onClick = { selected = "Detail Struktur" }, modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.AccountTree, null); Spacer(Modifier.width(6.dp)); Text("Detail Struktur") }
+                            OutlinedButton(onClick = { selected = "Level Kunci" }, modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Layers, null); Spacer(Modifier.width(6.dp)); Text("Level Kunci") }
+                        }
+                    }
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                            Row(Modifier.fillMaxWidth().clickable { selected = "Notifikasi" }.padding(15.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.NotificationsActive, null, tint = Amber)
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Pusat Notifikasi", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Lihat ringkasan kondisi struktur", color = Muted, fontSize = 11.sp)
+                                }
+                                Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                            }
+                        }
+                    }
                 }
                 "Chart" -> {
-                    item { Section("GRAFIK CANDLESTICK") }
+                    item {
+                        Text("CHART ANALYZER", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Candlestick OHLC dan swing terkonfirmasi", color = Muted, fontSize = 12.sp)
+                    }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("5m", "15m", "1h").forEach { tf ->
-                            FilterChip(selected = timeframe == tf, onClick = { timeframe = tf }, label = { Text(tf.uppercase()) })
+                            FilterChip(selected = timeframe == tf, onClick = { timeframe = tf },
+                                label = { Text(tf.uppercase(), fontWeight = FontWeight.Bold) },
+                                colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Color(0xFF123B54), selectedLabelColor = Blue))
                         }
                     } }
                     item { CandleChart(candles[timeframe].orEmpty(), results[timeframe], tall = true) }
                     item { LegendRow() }
                     item { TrendCard(results[timeframe]) }
-                    item { Text("Swing hanya ditandai setelah pivot memiliki dua candle konfirmasi di sebelah kanan. Candle terakhir yang masih berjalan tidak dipakai untuk konfirmasi.", color = Muted, fontSize = 12.sp) }
-                    item { Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text(if (loading) "Memperbarui…" else "Perbarui candle") } }
+                    item { Text("Swing ditandai setelah pivot memiliki dua candle konfirmasi di sebelah kanan.", color = Muted, fontSize = 12.sp) }
+                    item { Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)) { Text(if (loading) "Memperbarui…" else "PERBARUI CANDLE") } }
                     if (error != null) item { ErrorCard(error!!) }
                 }
                 "Analisis" -> {
-                    item { Section("ANALISIS STRUKTUR MULTI-TIMEFRAME") }
+                    item {
+                        Text("ANALISIS STRUKTUR", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Pembacaan 1H • 15M • 5M", color = Muted, fontSize = 12.sp)
+                    }
                     item { InterpretationCard(results) }
                     listOf("1h", "15m", "5m").forEach { tf ->
                         item { Section("TIMEFRAME ${tf.uppercase()}") }
                         item { TrendCard(results[tf]) }
                         item { DetailCard(results[tf]) }
                     }
-                    item { Text("Aturan: 1H adalah bias utama; 15m memberi konteks; 5m menunjukkan gerak jangka pendek. Perbedaan arah 5m tidak otomatis membatalkan tren 1H.", color = Muted, fontSize = 12.sp) }
                 }
                 "Riwayat" -> {
-                    item { Section("RIWAYAT ANALISIS TERSIMPAN") }
-                    item { Text("Disimpan lokal di perangkat ini setelah data berhasil diperbarui. Maksimal 100 catatan.", color = Muted, fontSize = 12.sp) }
+                    item {
+                        Text("RIWAYAT ANALISIS", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Catatan yang tersimpan di perangkat ini", color = Muted, fontSize = 12.sp)
+                    }
+                    item { Text("Maksimal 100 catatan • disimpan lokal setelah data berhasil diperbarui", color = Muted, fontSize = 11.sp) }
                     if (history.isEmpty()) item { EmptyCard("Belum ada riwayat. Perbarui data saat koneksi tersedia.") }
                     items(history) { run ->
-                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp)) {
-                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
-                                Text("$" + "%,.2f".format(Locale.US, run.price), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(run.bias, color = if (run.bias.contains("BULLISH")) Green else if (run.bias.contains("BEARISH")) Red else Amber, fontWeight = FontWeight.Bold)
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)),
+                                    color = Muted, fontSize = 11.sp)
+                                Text("$" + "%,.2f".format(Locale.US, run.price), color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(run.bias, color = if (run.bias.contains("BULLISH")) Green else if (run.bias.contains("BEARISH")) Red else Amber,
+                                    fontWeight = FontWeight.Bold)
                                 Text(run.note, color = Muted, fontSize = 12.sp)
                             }
                         }
@@ -198,10 +295,13 @@ private fun AnalyzerApp(context: Context) {
                     item { OutlinedButton(onClick = {
                         history = emptyList()
                         context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).edit().remove("history").apply()
-                    }, modifier = Modifier.fillMaxWidth()) { Text("Hapus riwayat") } }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("HAPUS RIWAYAT") } }
                 }
                 "Detail Struktur" -> {
-                    item { Section("DETAIL STRUKTUR • BTC/USDT") }
+                    item {
+                        Text("DETAIL STRUKTUR", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("BTC/USDT • struktur swing terkonfirmasi", color = Muted, fontSize = 12.sp)
+                    }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("5m", "15m", "1h").forEach { tf ->
                             FilterChip(selected = timeframe == tf, onClick = { timeframe = tf }, label = { Text(tf.uppercase()) })
@@ -209,91 +309,128 @@ private fun AnalyzerApp(context: Context) {
                     } }
                     item { TrendCard(results[timeframe]) }
                     item { CandleChart(candles[timeframe].orEmpty(), results[timeframe], tall = true) }
-                    item { Section("INFORMASI STRUKTUR") }
+                    item { Section("URUTAN SWING TERKONFIRMASI") }
                     item { DetailCard(results[timeframe]) }
                     item { Section("KONTEKS MULTI-TIMEFRAME") }
                     item { InterpretationCard(results) }
                 }
                 "Level Kunci" -> {
-                    item { Section("LEVEL KUNCI • ${timeframe.uppercase()}") }
+                    item {
+                        Text("LEVEL KUNCI", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Level berdasarkan swing yang sudah dikonfirmasi", color = Muted, fontSize = 12.sp)
+                    }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("5m", "15m", "1h").forEach { tf ->
                             FilterChip(selected = timeframe == tf, onClick = { timeframe = tf }, label = { Text(tf.uppercase()) })
                         }
                     } }
                     val swings = results[timeframe]?.swings.orEmpty()
-                    val highs = swings.filter { it.isHigh }.takeLast(2).reversed()
-                    val lows = swings.filter { !it.isHigh }.takeLast(2).reversed()
-                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Resistance", color = Red, fontWeight = FontWeight.Bold)
-                            if (highs.isEmpty()) Text("Belum ada swing high terkonfirmasi", color = Muted, fontSize = 12.sp)
-                            highs.forEachIndexed { i, s -> Row {
-                                Text("R${i+1}", color = Red, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
-                                Text("$" + "%,.2f".format(Locale.US, s.price), color = Color.White)
-                            } }
-                            Divider(color = Panel2)
-                            Text("Support", color = Green, fontWeight = FontWeight.Bold)
-                            if (lows.isEmpty()) Text("Belum ada swing low terkonfirmasi", color = Muted, fontSize = 12.sp)
-                            lows.forEachIndexed { i, s -> Row {
-                                Text("S${i+1}", color = Green, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
-                                Text("$" + "%,.2f".format(Locale.US, s.price), color = Color.White)
-                            } }
+                    val highs = swings.filter { it.isHigh }.takeLast(3).reversed()
+                    val lows = swings.filter { !it.isHigh }.takeLast(3).reversed()
+                    item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    Text("RESISTANCE", color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                    if (highs.isEmpty()) Text("Belum tersedia", color = Muted, fontSize = 11.sp)
+                                    highs.forEachIndexed { i, s ->
+                                        Text("R${i+1}  $" + "%,.2f".format(Locale.US, s.price), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
+                            Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    Text("SUPPORT", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                    if (lows.isEmpty()) Text("Belum tersedia", color = Muted, fontSize = 11.sp)
+                                    lows.forEachIndexed { i, s ->
+                                        Text("S${i+1}  $" + "%,.2f".format(Locale.US, s.price), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                         }
-                    } }
+                    }
                     item { CandleChart(candles[timeframe].orEmpty(), results[timeframe], tall = true) }
-                    item { Text("Level dihitung dari swing yang sudah terkonfirmasi, bukan prediksi harga atau jaminan breakout.", color = Muted, fontSize = 12.sp) }
+                    item { Text("Level ini berasal dari swing historis, bukan jaminan harga akan berbalik.", color = Muted, fontSize = 12.sp) }
                 }
                 "Notifikasi" -> {
-                    item { Section("PUSAT NOTIFIKASI") }
-                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                    item {
+                        Text("NOTIFICATION CENTER", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Ringkasan struktur pasar terbaru", color = Muted, fontSize = 12.sp)
+                    }
+                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Ringkasan struktur terbaru", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            Text("Halaman ini merangkum kondisi struktur yang berhasil dimuat. Notifikasi sistem dan pemantauan layar mati belum aktif pada versi ini.", color = Muted, fontSize = 12.sp)
-                            Divider(color = Panel2)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.NotificationsActive, null, tint = Amber, modifier = Modifier.size(26.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    Text("Status fitur: belum berjalan di latar belakang", color = Amber, fontSize = 11.sp)
+                                }
+                            }
+                            Divider(color = Color(0xFF24364A))
                             listOf("1h", "15m", "5m").forEach { tf ->
                                 val r = results[tf]
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(when(r?.trend) {
-                                        Trend.BULLISH -> Icons.Default.TrendingUp
-                                        Trend.BEARISH -> Icons.Default.TrendingDown
-                                        else -> Icons.Default.Timeline
-                                    }, null, tint = trendColor(r?.trend))
-                                    Spacer(Modifier.width(10.dp))
+                                    Box(Modifier.size(40.dp).background(Color(0xFF17283B), RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                                        Icon(when(r?.trend) { Trend.BULLISH -> Icons.Default.TrendingUp; Trend.BEARISH -> Icons.Default.TrendingDown; else -> Icons.Default.Timeline },
+                                            null, tint = trendColor(r?.trend))
+                                    }
+                                    Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text("${tf.uppercase()} • ${trendLabel(r?.trend)}", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                        Text(r?.summary ?: "Belum ada data struktur", color = Muted, fontSize = 12.sp)
+                                        Text("${tf.uppercase()} • ${trendLabel(r?.trend)}", color = Color.White, fontWeight = FontWeight.Bold)
+                                        Text(r?.summary ?: "Belum ada data", color = Muted, fontSize = 11.sp)
                                     }
                                 }
-                                Divider(color = Panel2)
+                                Divider(color = Color(0xFF24364A))
                             }
-                            Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (loading) "Memperbarui…" else "Perbarui struktur")
-                            }
+                            Text("Push notification dan pemantauan saat layar mati belum diimplementasikan.", color = Muted, fontSize = 11.sp)
+                            Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)) { Text(if (loading) "MEMPERBARUI…" else "PERBARUI STRUKTUR") }
                         }
                     } }
                 }
                 else -> {
-                    item { Section("PENGATURAN") }
-                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Sumber data", color = Muted, fontSize = 12.sp)
-                            Text("Binance public market data • BTC/USDT", color = Color.White, fontWeight = FontWeight.SemiBold)
-                            Divider(color = Panel2)
-                            Text("Pembaruan", color = Muted, fontSize = 12.sp)
-                            Text("Untuk saat ini pembaruan dilakukan manual dengan tombol refresh. Pemantauan otomatis saat layar mati belum diaktifkan pada versi ini.", color = Color.White, fontSize = 13.sp)
+                    item {
+                        Text("PENGATURAN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Preferensi aplikasi dan koneksi data", color = Muted, fontSize = 12.sp)
+                    }
+                    item { Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.BatteryChargingFull, null, tint = Amber)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Pemantauan latar belakang", modifier = Modifier.weight(1f), color = Color.White)
-                                Text("Belum aktif", color = Amber, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Icon(Icons.Default.CloudDone, null, tint = Green, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Sumber data", color = Muted, fontSize = 11.sp)
+                                    Text("Binance Public Data • BTC/USDT", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
                             }
-                            Divider(color = Panel2)
-                            Text("Metode analisis", color = Muted, fontSize = 12.sp)
-                            Text("Swing pivot 2 candle kiri + 2 candle kanan; HH/HL/LH/LL. Tidak menggunakan EMA, RSI, atau MACD sebagai penentu arah.", color = Color.White, fontSize = 13.sp)
-                            Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth()) { Text("Uji koneksi / perbarui data") }
+                            Divider(color = Color(0xFF24364A))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Schedule, null, tint = Blue, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Pembaruan data", color = Muted, fontSize = 11.sp)
+                                    Text("Manual melalui tombol refresh", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            Divider(color = Color(0xFF24364A))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.BatteryChargingFull, null, tint = Amber, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("Pemantauan latar belakang", color = Muted, fontSize = 11.sp)
+                                    Text("Belum aktif", color = Amber, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Divider(color = Color(0xFF24364A))
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("METODE STRUKTUR", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Swing pivot 2 candle kiri + 2 candle kanan. Tidak menggunakan EMA, RSI, atau MACD sebagai penentu arah.", color = Color.White, fontSize = 12.sp)
+                            }
+                            Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)) { Text(if (loading) "MENGUJI…" else "UJI KONEKSI / PERBARUI DATA") }
                             if (error != null) ErrorCard(error!!)
-                            Text("Versi 0.2 • Pengujian aktif • Bukan saran transaksi", color = Muted, fontSize = 11.sp)
+                            Text("BTC STRUCTURE ANALYZER • V0.3 • MODE PENGUJIAN", color = Muted, fontSize = 10.sp)
                         }
                     } }
                 }
