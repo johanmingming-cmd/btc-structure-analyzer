@@ -17,18 +17,18 @@ class BinanceRepository {
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
         val paths = listOf(
-            "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit",
-            "https://fapi1.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"
+            "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
+            "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit"
         )
         var lastError: Exception? = null
         for (url in paths) {
             try {
-                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer-Futures/0.4").get().build()
+                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer-Spot/0.5").get().build()
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("Server candle membalas HTTP ${response.code}")
+                    if (!response.isSuccessful) throw IllegalStateException("Server candle Spot membalas HTTP ${response.code}")
                     val body = response.body?.string().orEmpty()
                     val array = JSONArray(body)
-                    if (array.length() == 0) throw IllegalStateException("Data candle kosong")
+                    if (array.length() == 0) throw IllegalStateException("Data candle Spot kosong")
                     return@withContext buildList {
                         for (i in 0 until array.length()) {
                             val row = array.getJSONArray(i)
@@ -40,6 +40,6 @@ class BinanceRepository {
                 }
             } catch (e: Exception) { lastError = e }
         }
-        throw IllegalStateException("Gagal menghubungi endpoint Binance USDⓈ-M Futures. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
+        throw IllegalStateException("Gagal menghubungi endpoint Binance Spot. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
     }
 }
