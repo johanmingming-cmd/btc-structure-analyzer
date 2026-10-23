@@ -19,7 +19,7 @@ data class ScannedCoin(
     val reason: String
 )
 
-class CoinScanner(private val repository: BinanceRepository) {
+class CoinScanner(private val repository: BinanceRepository, private val context: android.content.Context) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -113,18 +113,22 @@ class CoinScanner(private val repository: BinanceRepository) {
     }
 
     private fun fetchTradableUsdtPerpetualSymbols(): Set<String> {
+        // Futures is only a reference list; market data and analysis remain on Binance Spot REST.
+        val prefs = context.getSharedPreferences("btc_structure", android.content.Context.MODE_PRIVATE)
+        val cacheKey = "futures_usdt_perpetual_symbols"
+        val timeKey = "futures_usdt_perpetual_symbols_saved_at"
         var lastError: Exception? = null
         for (endpoint in listOf("https://fapi.binance.com/fapi/v1/exchangeInfo", "https://fapi1.binance.com/fapi/v1/exchangeInfo")) {
             try {
                 val request = Request.Builder()
                     .url(endpoint)
-                    .header("User-Agent", "BTCStructureAnalyzer-SpotFuturesFilter/0.6")
+                    .header("User-Agent", "BTCStructureAnalyzer-SpotFuturesFilter/0.7")
                     .get().build()
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw IllegalStateException("Binance Futures exchangeInfo HTTP ${response.code}")
                     val json = JSONObject(response.body?.string().orEmpty())
                     val symbols = json.optJSONArray("symbols") ?: JSONArray()
-                    return buildSet {
+                    val fresh = buildSet {
                         for (i in 0 until symbols.length()) {
                             val item = symbols.optJSONObject(i) ?: continue
                             if (item.optString("status") == "TRADING" &&
@@ -134,13 +138,27 @@ class CoinScanner(private val repository: BinanceRepository) {
                             }
                         }
                     }
+                    if (fresh.isEmpty()) throw IllegalStateException("Daftar Futures kosong")
+                    prefs.edit().putString(cacheKey, fresh.sorted().joinToString(","))
+                        .putLong(timeKey, System.currentTimeMillis()).apply()
+                    return fresh
                 }
             } catch (e: Exception) {
                 lastError = e
             }
         }
+
+        // Reuse the last verified Futures symbol list if the endpoint is blocked, for up to 30 days.
+        val cached = prefs.getString(cacheKey, null).orEmpty()
+            .split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        val savedAt = prefs.getLong(timeKey, 0L)
+        val cacheAge = System.currentTimeMillis() - savedAt
+        if (cached.isNotEmpty() && savedAt > 0L && cacheAge in 0..TimeUnit.DAYS.toMillis(30)) {
+            return cached
+        }
+
         throw IllegalStateException(
-            "Gagal memverifikasi daftar Binance Futures USDT perpetual; pemindaian dihentikan agar tidak memakai daftar yang belum terverifikasi. ${lastError?.message ?: ""}",
+            "Daftar Futures belum tersedia dan belum ada cache valid. Sambungkan VPN sekali untuk menyimpan daftar acuan; setelah itu scan Spot bisa berjalan tanpa mengakses endpoint Futures setiap kali. ${lastError?.message ?: ""}",
             lastError
         )
     }
