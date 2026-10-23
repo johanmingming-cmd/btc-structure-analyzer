@@ -1,9 +1,18 @@
 package com.btcstructureanalyzer
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,6 +37,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 private val Navy = Color(0xFF07111F)
 private val Panel = Color(0xFF101E2D)
@@ -60,7 +70,7 @@ private fun AnalyzerApp(context: Context) {
     var candles by remember { mutableStateOf<Map<String, List<Candle>>>(emptyMap()) }
     var results by remember { mutableStateOf<Map<String, StructureResult>>(emptyMap()) }
     var lastRefresh by remember { mutableStateOf<Long?>(null) }
-    var autoRefresh by remember { mutableStateOf(false) }
+    var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
 
     fun loadHistory() {
@@ -202,8 +212,7 @@ private fun AnalyzerApp(context: Context) {
                                     results.isEmpty() -> "Data belum tersedia. Perbarui data untuk membaca struktur."
                                     else -> "1H menentukan bias utama • 15M memberi konteks • 5M menunjukkan pergerakan jangka pendek."
                                 }, color = Muted, fontSize = 12.sp)
-                                Text("Kesimpulan prediksi belum ditampilkan pada tahap perbaikan UI ini.",
-                                    color = Amber, fontSize = 11.sp)
+                                PredictionSummary(candles, results)
                             }
                         }
                     }
@@ -364,7 +373,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text("Status fitur: belum berjalan di latar belakang", color = Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Pemantauan latar belakang aktif (interval minimum 15 menit)" else "Pemantauan latar belakang tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -383,7 +392,7 @@ private fun AnalyzerApp(context: Context) {
                                 }
                                 Divider(color = Color(0xFF24364A))
                             }
-                            Text("Push notification dan pemantauan saat layar mati belum diimplementasikan.", color = Muted, fontSize = 11.sp)
+                            Text(if (autoRefresh) "WorkManager aktif; penghemat baterai Android dapat menunda pengecekan." else "Aktifkan pemantauan di Pengaturan untuk notifikasi perubahan bias 1H.", color = Muted, fontSize = 11.sp)
                             Button(onClick = { refresh() }, enabled = !loading, modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp)) { Text(if (loading) "MEMPERBARUI…" else "PERBARUI STRUKTUR") }
                         }
@@ -410,17 +419,30 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Manual melalui tombol refresh", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Manual refresh + pemantauan opsional setiap ≥15 menit", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.BatteryChargingFull, null, tint = Amber, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Default.BatteryChargingFull, null, tint = if (autoRefresh) Green else Amber, modifier = Modifier.size(24.dp))
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pemantauan latar belakang", color = Muted, fontSize = 11.sp)
-                                    Text("Belum aktif", color = Amber, fontWeight = FontWeight.Bold)
+                                    Text(if (autoRefresh) "Aktif • cek berkala" else "Tidak aktif", color = if (autoRefresh) Green else Amber, fontWeight = FontWeight.Bold)
                                 }
+                                Switch(checked = autoRefresh, onCheckedChange = { enabled ->
+                                    autoRefresh = enabled
+                                    context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).edit().putBoolean("background_monitoring", enabled).apply()
+                                    if (enabled) {
+                                        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED && context is Activity) {
+                                            ActivityCompat.requestPermissions(context, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+                                        }
+                                        val request = PeriodicWorkRequestBuilder<StructureMonitorWorker>(15, TimeUnit.MINUTES).build()
+                                        WorkManager.getInstance(context).enqueueUniquePeriodicWork("btc_structure_monitor", ExistingPeriodicWorkPolicy.UPDATE, request)
+                                    } else {
+                                        WorkManager.getInstance(context).cancelUniqueWork("btc_structure_monitor")
+                                    }
+                                })
                             }
                             Divider(color = Color(0xFF24364A))
                             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -435,6 +457,33 @@ private fun AnalyzerApp(context: Context) {
                     } }
                 }
             }
+        }
+    }
+}
+
+@Composable private fun PredictionSummary(candles: Map<String, List<Candle>>, results: Map<String, StructureResult>) {
+    val forecast = remember(candles, results) { StructureAnalyzer.forecast(candles["5m"].orEmpty(), results["5m"], results["15m"], results["1h"]) }
+    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF101E2D)), shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Amber.copy(alpha = .45f))) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoGraph, null, tint = Amber)
+                Spacer(Modifier.width(8.dp))
+                Text("PROYEKSI 3 CANDLE BERIKUTNYA • 5M", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Text(forecast.summary, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                forecast.steps.forEachIndexed { index, step ->
+                    Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel2), shape = RoundedCornerShape(12.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("CANDLE ${index + 1}", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Text(step.label, color = if (step.direction == "NAIK") Green else if (step.direction == "TURUN") Red else Amber, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("${step.confidence}%", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+            }
+            Text("Estimasi heuristik struktur + momentum, bukan model AI terlatih. Angka belum tervalidasi backtest dan bukan probabilitas akurat.", color = Muted, fontSize = 10.sp)
         }
     }
 }

@@ -9,6 +9,37 @@ object StructureAnalyzer {
     private const val LEFT = 2
     private const val RIGHT = 2
 
+
+    data class ForecastStep(val direction: String, val label: String, val confidence: Int)
+    data class ForecastResult(val summary: String, val steps: List<ForecastStep>)
+
+    // Transparent heuristic scenario; not a trained ML model or validated probability.
+    fun forecast(candles: List<Candle>, five: StructureResult?, fifteen: StructureResult?, oneHour: StructureResult?): ForecastResult {
+        val closed = candles.dropLast(1).takeLast(8)
+        if (closed.size < 5 || five == null || fifteen == null || oneHour == null ||
+            five.trend == Trend.UNCONFIRMED || oneHour.trend == Trend.UNCONFIRMED) {
+            return ForecastResult("Data/swing belum cukup; proyeksi ditahan agar tidak mengarang arah.",
+                listOf(ForecastStep("NETRAL", "Netral", 0), ForecastStep("NETRAL", "Netral", 0), ForecastStep("NETRAL", "Netral", 0)))
+        }
+        val momentum = closed.takeLast(4).sumOf { (it.close - it.open) / it.open.coerceAtLeast(1.0) }
+        var score = when (oneHour.trend) { Trend.BULLISH -> 2; Trend.BEARISH -> -2; else -> 0 }
+        score += when (fifteen.trend) { Trend.BULLISH -> 1; Trend.BEARISH -> -1; else -> 0 }
+        score += when (five.trend) { Trend.BULLISH -> 1; Trend.BEARISH -> -1; else -> 0 }
+        score += when { momentum > 0.001 -> 1; momentum < -0.001 -> -1; else -> 0 }
+        val direction = when { score >= 2 -> "NAIK"; score <= -2 -> "TURUN"; else -> "NETRAL" }
+        val aligned = oneHour.trend == fifteen.trend && fifteen.trend == five.trend
+        val confidence = (52 + kotlin.math.abs(score) * 5 + if (aligned) 4 else 0).coerceIn(50, 72)
+        val label = when(direction) { "NAIK" -> "Naik"; "TURUN" -> "Turun"; else -> "Netral" }
+        val summary = when(direction) {
+            "NAIK" -> "Skenario naik lebih dominan selama support struktur tidak ditembus."
+            "TURUN" -> "Skenario turun lebih dominan selama resistance struktur tidak direbut."
+            else -> "Timeframe/momentum bercampur. Tunggu konfirmasi, jangan paksa arah."
+        }
+        return ForecastResult(summary, (0..2).map { i ->
+            ForecastStep(direction, label, if (direction == "NETRAL") 50 else (confidence - i * 3).coerceIn(50, 72))
+        })
+    }
+
     fun analyze(timeframe: String, candles: List<Candle>): StructureResult {
         if (candles.size < LEFT + RIGHT + 3) {
             return StructureResult(timeframe, Trend.UNCONFIRMED, emptyList(), "Data candle belum cukup")
