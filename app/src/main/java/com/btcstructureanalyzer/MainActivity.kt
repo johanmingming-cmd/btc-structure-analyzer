@@ -321,6 +321,9 @@ private fun AnalyzerApp(context: Context) {
                                         val score = Regex("skor\\s+(\\d+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
                                         val signalPrice = Regex("harga\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
                                         val volume = Regex("volume 24J\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val srParts = detailLines.firstOrNull { it.startsWith("SR|$symbol|") }?.split("|").orEmpty()
+                                        val supportValues = (2..4).map { srParts.getOrNull(it) ?: "—" }
+                                        val resistanceValues = (5..7).map { srParts.getOrNull(it) ?: "—" }
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Card(
                                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF06231F)),
@@ -363,6 +366,52 @@ private fun AnalyzerApp(context: Context) {
                                                             if (metric.first == "VOLUME 24J") Text("USDT", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                                         }
                                                     }
+                                                }
+                                            }
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFF062B27)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Green.copy(alpha = .55f))
+                                            ) {
+                                                Column(
+                                                    Modifier.fillMaxWidth().padding(10.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.Default.BarChart, null, tint = Green, modifier = Modifier.size(20.dp))
+                                                        Spacer(Modifier.width(7.dp))
+                                                        Text("SUPPORT & RESISTANCE", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                                    }
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Text("SUPPORT (S)", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                                            repeat(3) { idx ->
+                                                                Row(
+                                                                    Modifier.fillMaxWidth().background(Color(0xFF063B2D), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 7.dp),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text("S${idx + 1}", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                    Text(supportValues[idx], color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, maxLines = 1)
+                                                                }
+                                                            }
+                                                        }
+                                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Text("RESISTANCE (R)", color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                                            repeat(3) { idx ->
+                                                                Row(
+                                                                    Modifier.fillMaxWidth().background(Color(0xFF3A2028), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 7.dp),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text("R${idx + 1}", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                    Text(resistanceValues[idx], color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, maxLines = 1)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Text("Level dihitung dari swing terkonfirmasi timeframe 15M. — berarti level belum tersedia.", color = Muted, fontSize = 10.sp)
                                                 }
                                             }
                                         }
