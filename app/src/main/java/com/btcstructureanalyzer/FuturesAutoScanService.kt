@@ -78,7 +78,13 @@ class FuturesAutoScanService : Service() {
         val details = matched.joinToString("\n") {
             "${it.symbol}: ${signalDirection(it)} • skor ${it.score} • harga ${"%,.8f".format(java.util.Locale.US, it.price)} • volume 24J ${"%,.0f".format(java.util.Locale.US, it.quoteVolume)}"
         }
-        val savedDetails = "Terdeteksi ${java.text.SimpleDateFormat("dd MMM yyyy • HH:mm:ss", java.util.Locale("id", "ID")).format(java.util.Date(detectedAt))}\n$details\n\nFilter: Futures USDT perpetual + Spot volume ≥ $20 juta + perubahan 24J maksimal ±12% + spread ≤ 0,50%. Analisis saja; bukan perintah transaksi."
+        fun fmtLevel(value: Double?): String = value?.let {
+            String.format(java.util.Locale.US, "%.8f", it).trimEnd('0').trimEnd('.')
+        } ?: "—"
+        val srDetails = matched.joinToString("\n") { coin ->
+            "SR|${coin.symbol}|${fmtLevel(coin.supportLevels.getOrNull(0))}|${fmtLevel(coin.supportLevels.getOrNull(1))}|${fmtLevel(coin.supportLevels.getOrNull(2))}|${fmtLevel(coin.resistanceLevels.getOrNull(0))}|${fmtLevel(coin.resistanceLevels.getOrNull(1))}|${fmtLevel(coin.resistanceLevels.getOrNull(2))}"
+        }
+        val savedDetails = "Terdeteksi ${java.text.SimpleDateFormat("dd MMM yyyy • HH:mm:ss", java.util.Locale("id", "ID")).format(java.util.Date(detectedAt))}\n$details\n$srDetails\n\nFilter: Futures USDT perpetual + Spot volume ≥ $20 juta + perubahan 24J maksimal ±12% + spread ≤ 0,50%. Analisis saja; bukan perintah transaksi."
         prefs.edit().putString("spot_notification_details", savedDetails).putLong("spot_notification_time", detectedAt).apply()
         val extra = (matched.size - 5).coerceAtLeast(0)
         val body = matched.take(5).joinToString("\n") { "${it.symbol}: ${signalDirection(it)} • skor ${it.score}" } +
