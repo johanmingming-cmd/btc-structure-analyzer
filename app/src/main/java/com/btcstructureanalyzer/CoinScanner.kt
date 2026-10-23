@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 data class ScannedCoin(
@@ -47,18 +48,28 @@ class CoinScanner(private val repository: BinanceRepository) {
             "Gagal mengambil daftar market Binance Spot. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
             tickerError
         )
+        // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
+        val futuresSymbols = fetchTradableUsdtPerpetualSymbols()
         val excluded = setOf("USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "EUR", "TRY", "BRL", "GBP", "BIDR", "IDRT")
         val candidates = buildList {
             for (i in 0 until tickers.length()) {
                 val row = tickers.getJSONObject(i)
                 val symbol = row.optString("symbol")
-                if (!symbol.endsWith("USDT") || symbol == "BTCUSDT") continue
+                if (!symbol.endsWith("USDT") || symbol == "BTCUSDT" || symbol !in futuresSymbols) continue
                 val base = symbol.removeSuffix("USDT")
                 if (excluded.contains(base) || base.endsWith("UP") || base.endsWith("DOWN") ||
                     base.endsWith("BULL") || base.endsWith("BEAR") || base.endsWith("USDT")) continue
                 val quoteVolume = row.optString("quoteVolume").toDoubleOrNull() ?: 0.0
                 val lastPrice = row.optString("lastPrice").toDoubleOrNull() ?: 0.0
-                if (quoteVolume >= 5_000_000.0 && lastPrice > 0.0) add(Triple(symbol, lastPrice, quoteVolume))
+                val changePercent = row.optString("priceChangePercent").toDoubleOrNull() ?: 999.0
+                val bid = row.optString("bidPrice").toDoubleOrNull() ?: 0.0
+                val ask = row.optString("askPrice").toDoubleOrNull() ?: 0.0
+                val spreadPercent = if (bid > 0.0 && ask >= bid) ((ask - bid) / ((ask + bid) / 2.0)) * 100.0 else 999.0
+                // Initial anti-microcap / anti-pump safeguards; these are filters, not safety guarantees.
+                if (quoteVolume >= 20_000_000.0 && lastPrice > 0.0 &&
+                    kotlin.math.abs(changePercent) <= 12.0 && spreadPercent <= 0.50) {
+                    add(Triple(symbol, lastPrice, quoteVolume))
+                }
             }
         }.sortedByDescending { it.third }.take(40)
 
@@ -99,5 +110,38 @@ class CoinScanner(private val repository: BinanceRepository) {
             }
         }
         output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
+    }
+
+    private fun fetchTradableUsdtPerpetualSymbols(): Set<String> {
+        var lastError: Exception? = null
+        for (endpoint in listOf("https://fapi.binance.com/fapi/v1/exchangeInfo", "https://fapi1.binance.com/fapi/v1/exchangeInfo")) {
+            try {
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .header("User-Agent", "BTCStructureAnalyzer-SpotFuturesFilter/0.6")
+                    .get().build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Binance Futures exchangeInfo HTTP ${response.code}")
+                    val json = JSONObject(response.body?.string().orEmpty())
+                    val symbols = json.optJSONArray("symbols") ?: JSONArray()
+                    return buildSet {
+                        for (i in 0 until symbols.length()) {
+                            val item = symbols.optJSONObject(i) ?: continue
+                            if (item.optString("status") == "TRADING" &&
+                                item.optString("contractType") == "PERPETUAL" &&
+                                item.optString("quoteAsset") == "USDT") {
+                                add(item.optString("symbol"))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw IllegalStateException(
+            "Gagal memverifikasi daftar Binance Futures USDT perpetual; pemindaian dihentikan agar tidak memakai daftar yang belum terverifikasi. ${lastError?.message ?: ""}",
+            lastError
+        )
     }
 }
