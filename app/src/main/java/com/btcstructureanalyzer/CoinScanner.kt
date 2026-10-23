@@ -16,7 +16,9 @@ data class ScannedCoin(
     val trend15m: Trend,
     val trend1h: Trend,
     val score: Int,
-    val reason: String
+    val reason: String,
+    val supportLevels: List<Double> = emptyList(),
+    val resistanceLevels: List<Double> = emptyList()
 )
 
 class CoinScanner(private val repository: BinanceRepository, private val context: android.content.Context) {
@@ -104,7 +106,23 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
                 val directionText = if (sameBullish) "bullish" else "bearish"
                 val reason = "Konfirmasi: struktur Spot 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
-                output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason))
+                // Confirmed 15m swing pivots provide nearby, data-derived S/R levels.
+                // Supports are below the current spot price; resistances are above it.
+                val supports = r15.swings.asSequence()
+                    .filter { !it.isHigh && it.price < lastPrice }
+                    .map { it.price }
+                    .distinctBy { (it * 100.0).toLong() }
+                    .sortedDescending()
+                    .take(3)
+                    .toList()
+                val resistances = r15.swings.asSequence()
+                    .filter { it.isHigh && it.price > lastPrice }
+                    .map { it.price }
+                    .distinctBy { (it * 100.0).toLong() }
+                    .sorted()
+                    .take(3)
+                    .toList()
+                output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason, supports, resistances))
             } catch (_: Exception) {
                 // Skip a symbol whose data is unavailable; keep the scanner moving.
             }
