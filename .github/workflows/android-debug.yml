@@ -29,7 +29,11 @@ jobs:
       - name: Accept Android SDK licenses
         shell: bash
         run: |
+          set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
+          status=${PIPESTATUS[1]}
+          set -o pipefail
+          exit "$status"
 
       - name: Install Android platform and build tools
         shell: bash
