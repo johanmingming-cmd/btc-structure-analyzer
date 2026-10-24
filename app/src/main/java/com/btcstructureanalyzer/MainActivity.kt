@@ -91,6 +91,8 @@ private fun AnalyzerApp(context: Context) {
     var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
+    var historyRefreshLoading by remember { mutableStateOf(false) }
+    var historyRefreshError by remember { mutableStateOf<String?>(null) }
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
@@ -547,7 +549,33 @@ private fun AnalyzerApp(context: Context) {
                     item {
                         Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
-                        OutlinedButton(onClick = { signalHistory = SignalJournal.read(context) }, modifier = Modifier.fillMaxWidth()) { Text("SEGARKAN RIWAYAT") }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    historyRefreshLoading = true
+                                    historyRefreshError = null
+                                    try {
+                                        val currentRecords = SignalJournal.read(context)
+                                        val symbols = currentRecords.map { it.symbol }.toSet()
+                                        if (symbols.isNotEmpty()) {
+                                            val latestPrices = repo.latestPrices(symbols)
+                                            SignalJournal.updatePrices(context, latestPrices)
+                                        }
+                                        signalHistory = SignalJournal.read(context)
+                                    } catch (e: Exception) {
+                                        historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
+                                        signalHistory = SignalJournal.read(context)
+                                    } finally {
+                                        historyRefreshLoading = false
+                                    }
+                                }
+                            },
+                            enabled = !historyRefreshLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
+                        }
+                        historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
                     }
                     if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
                     items(signalHistory, key = { it.id }) { run ->
