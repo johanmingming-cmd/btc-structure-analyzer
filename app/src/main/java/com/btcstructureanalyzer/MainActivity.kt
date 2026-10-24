@@ -3,11 +3,14 @@ package com.btcstructureanalyzer
 import android.Manifest
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
@@ -19,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +34,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -48,7 +54,18 @@ private val Muted = Color(0xFF9FB2C8)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Restore the user-enabled scanner when Android recreates the activity.
+        // The preference can remain ON even if Android has killed the foreground service.
+        val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("background_monitoring", false)) {
+            ContextCompat.startForegroundService(this, Intent(this, FuturesAutoScanService::class.java))
+        }
         setContent { MaterialTheme(colorScheme = darkColorScheme(background = Navy, surface = Panel, primary = Blue, secondary = Green)) { AnalyzerApp(this) } }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_TAB = "open_tab"
+        const val EXTRA_SPOT_SIGNAL_NOTIFICATION = "spot_signal_notification"
     }
 }
 
@@ -59,7 +76,15 @@ private data class SavedRun(val time: Long, val price: Double, val bias: String,
 private fun AnalyzerApp(context: Context) {
     val scope = rememberCoroutineScope()
     val repo = remember { BinanceRepository() }
-    var selected by remember { mutableStateOf("Home") }
+    var selected by remember { mutableStateOf(
+        (context as? Activity)?.intent?.getStringExtra(MainActivity.EXTRA_OPEN_TAB) ?: "Home"
+    ) }
+    var notificationDetails by remember {
+        mutableStateOf(
+            context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                .getString("spot_notification_details", null)
+        )
+    }
     var timeframe by remember { mutableStateOf("5m") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -69,8 +94,37 @@ private fun AnalyzerApp(context: Context) {
     var lastRefresh by remember { mutableStateOf<Long?>(null) }
     var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
+    var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
+    var historyRefreshLoading by remember { mutableStateOf(false) }
+    var historyRefreshError by remember { mutableStateOf<String?>(null) }
+    var exportLoading by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    var exportError by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            scope.launch {
+                exportLoading = true
+                exportMessage = null
+                exportError = null
+                try {
+                    withContext(Dispatchers.IO) {
+                        val recordsForExport = SignalJournal.read(context)
+                        val output = context.contentResolver.openOutputStream(uri, "w")
+                            ?: throw IllegalStateException("Tidak bisa membuka file tujuan")
+                        output.use { SignalExport.writeZip(it, recordsForExport) }
+                    }
+                    exportMessage = "Export ZIP berhasil disimpan. Jurnal lokal tidak diubah."
+                } catch (e: Exception) {
+                    exportError = e.message ?: "Export gagal disimpan"
+                } finally {
+                    exportLoading = false
+                }
+            }
+        }
+    }
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
+    var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
     var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
     var scanCompleted by remember { mutableStateOf(false) }
 
@@ -109,7 +163,7 @@ private fun AnalyzerApp(context: Context) {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { loadHistory(); refresh() }
+    LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
 
     Scaffold(
         containerColor = Navy,
@@ -275,6 +329,168 @@ private fun AnalyzerApp(context: Context) {
                         Text("ANALISIS STRUKTUR", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Pembacaan 1H • 15M • 5M", color = Muted, fontSize = 12.sp)
                     }
+                    if (notificationDetails != null) {
+                        item {
+                            val detailLines = notificationDetails.orEmpty().lines()
+                            val detectedLine = detailLines.firstOrNull().orEmpty()
+                            val filterLine = detailLines.firstOrNull { it.startsWith("Filter:") }.orEmpty()
+                            val signalLines = detailLines.filter { it.contains(":") && (it.contains("BULLISH") || it.contains("BEARISH")) }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF062B27)),
+                                shape = RoundedCornerShape(20.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Green.copy(alpha = .9f))
+                            ) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.NotificationsActive, null, tint = Green, modifier = Modifier.size(24.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("SINYAL SPOT DARI NOTIFIKASI", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
+                                    }
+                                    Text(detectedLine, color = Muted, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    signalLines.forEach { line ->
+                                        val bullish = line.contains("BULLISH")
+                                        val directionColor = if (bullish) Green else Red
+                                        val symbol = line.substringBefore(":").trim()
+                                        val score = Regex("skor\\s+(\\d+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val signalPrice = Regex("harga\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val volume = Regex("volume 24J\\s+([0-9.,]+)").find(line)?.groupValues?.getOrNull(1) ?: "—"
+                                        val srParts = detailLines.firstOrNull { it.startsWith("SR|$symbol|") }?.split("|").orEmpty()
+                                        val supportValues = (2..4).map { srParts.getOrNull(it) ?: "—" }
+                                        val resistanceValues = (5..7).map { srParts.getOrNull(it) ?: "—" }
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Card(
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFF06231F)),
+                                                shape = RoundedCornerShape(14.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.5.dp, directionColor)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(if (bullish) Icons.Default.TrendingUp else Icons.Default.TrendingDown, null,
+                                                        tint = directionColor, modifier = Modifier.size(42.dp))
+                                                    Spacer(Modifier.width(12.dp))
+                                                    Text(
+                                                        if (bullish) "UP / BULLISH" else "DOWN / BEARISH",
+                                                        color = directionColor, fontWeight = FontWeight.Black, fontSize = 28.sp
+                                                    )
+                                                }
+                                            }
+                                            Text(symbol, color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                                                listOf(Triple("SKOR", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
+                                                    Card(
+                                                        modifier = Modifier.weight(if (metric.first == "SKOR") 0.8f else 1.2f),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF092721)),
+                                                        shape = RoundedCornerShape(11.dp),
+                                                        border = androidx.compose.foundation.BorderStroke(1.dp, directionColor.copy(alpha = .55f))
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 5.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Text(metric.first, color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            Text(metric.second, color = if (metric.third) directionColor else Color.White,
+                                                                fontWeight = FontWeight.Black, fontSize = if (metric.third) 27.sp else 15.sp,
+                                                                maxLines = 2)
+                                                            if (metric.first == "HARGA") Text("USDT", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                            if (metric.first == "VOLUME 24J") Text("USDT", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = CardDefaults.cardColors(containerColor = Color(0xFF062B27)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, Green.copy(alpha = .55f))
+                                            ) {
+                                                Column(
+                                                    Modifier.fillMaxWidth().padding(10.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(Icons.Default.BarChart, null, tint = Green, modifier = Modifier.size(20.dp))
+                                                        Spacer(Modifier.width(7.dp))
+                                                        Text("SUPPORT & RESISTANCE", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                                    }
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Text("SUPPORT (S)", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                                            repeat(3) { idx ->
+                                                                Row(
+                                                                    Modifier.fillMaxWidth().background(Color(0xFF063B2D), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 7.dp),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text("S${idx + 1}", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                    Text(supportValues[idx], color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, maxLines = 1)
+                                                                }
+                                                            }
+                                                        }
+                                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Text("RESISTANCE (R)", color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                                            repeat(3) { idx ->
+                                                                Row(
+                                                                    Modifier.fillMaxWidth().background(Color(0xFF3A2028), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 7.dp),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Text("R${idx + 1}", color = Muted, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                                    Text(resistanceValues[idx], color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, maxLines = 1)
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    Text("Level dihitung dari swing terkonfirmasi timeframe 15M. — berarti level belum tersedia.", color = Muted, fontSize = 10.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(Icons.Default.FilterAlt, null, tint = Muted, modifier = Modifier.size(22.dp))
+                                        Text(filterLine.removePrefix("Filter:").trim(), color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF082F25)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Green)
+                                        ) {
+                                            Row(Modifier.fillMaxWidth().padding(9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.TrendingUp, null, tint = Green, modifier = Modifier.size(22.dp))
+                                                Spacer(Modifier.width(5.dp))
+                                                Text("UP / BULLISH", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            }
+                                        }
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF30191F)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, Red)
+                                        ) {
+                                            Row(Modifier.fillMaxWidth().padding(9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.TrendingDown, null, tint = Red, modifier = Modifier.size(22.dp))
+                                                Spacer(Modifier.width(5.dp))
+                                                Text("DOWN / BEARISH", color = Red, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                    Divider(color = Green.copy(alpha = .45f))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Info, null, tint = Muted, modifier = Modifier.size(22.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Analisis saja • bukan perintah transaksi.", color = Muted, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                    Divider(color = Green.copy(alpha = .35f))
+                                    Text("Sinyal disimpan lokal dan tetap tersedia di sini sampai notifikasi sinyal berikutnya menggantikannya.", color = Muted, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
                     item { InterpretationCard(results) }
                     item { PredictionSummary(candles, results) }
                     item {
@@ -282,36 +498,70 @@ private fun AnalyzerApp(context: Context) {
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Text("SCANNER OTOMATIS • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Sumber Binance USDⓈ-M Futures • pasangan USDT perpetual likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
+                                Text("Sumber Binance Spot • pasangan USDT likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
                                         scanCompleted = false
                                         scanError = null
                                         scannedCoins = emptyList()
-                                        try { scannedCoins = CoinScanner(repo).scan(15) }
+                                        val scanner = CoinScanner(repo, context)
+                                         try { scannedCoins = scanner.scan(15) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanLoading = false; scanCompleted = true }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 15 COIN BINANCE")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
+                                scanDiagnostics?.let { d ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0B202B)),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF294457))
+                                    ) {
+                                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                            Text("DIAGNOSTIK PEMINDAIAN", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            Text("Pasangan Spot: ${d.spotPairs} • Daftar Futures: ${d.futuresWhitelist}", color = Muted, fontSize = 11.sp)
+                                            Text("Lolos volume/spread/perubahan: ${d.liquidCandidates}", color = Muted, fontSize = 11.sp)
+                                            Text("Candle berhasil diperiksa: ${d.candlesChecked} • Tren 1H+15M searah: ${d.trendConfirmed}", color = Muted, fontSize = 11.sp)
+                                            Text("Momentum 5M lolos: ${d.momentumConfirmed} • Error data candle: ${d.dataErrors}", color = if (d.dataErrors > 0) Amber else Muted, fontSize = 11.sp)
+                                            d.lastError?.let { Text("Error: $it", color = Red, fontSize = 11.sp) }
+                                        }
+                                    }
+                                }
                                 if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text(if (scanCompleted) "Pemindaian Futures selesai, tetapi belum ada koin yang memenuhi semua konfirmasi 1H • 15M • 5M. Coba lagi nanti." else "Tekan Pindai untuk mencari kandidat terbaru.", color = if (scanCompleted) Color(0xFFFFC857) else Muted, fontSize = 12.sp)
                                 scannedCoins.forEachIndexed { index, coin ->
                                     Divider(color = Color(0xFF20374B))
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("${index + 1}. ${coin.symbol.removeSuffix("USDT")}/USDT", color = Color.White, fontWeight = FontWeight.Bold)
-                                            Text("1H ${trendLabel(coin.trend1h)} • 15M ${trendLabel(coin.trend15m)} • 5M ${trendLabel(coin.trend5m)}", color = Muted, fontSize = 10.sp)
-                                            Text(coin.reason, color = Muted, fontSize = 10.sp)
-                                            Text("Volume 24J: $" + "%,.0f".format(Locale.US, coin.quoteVolume), color = Muted, fontSize = 10.sp)
+                                    val isLong = coin.trend1h == Trend.BULLISH && coin.trend15m == Trend.BULLISH
+                                    val direction = if (isLong) "LONG" else "SHORT"
+                                    val pad = coin.price * 0.00025
+                                    val entryLow = coin.price - pad
+                                    val entryHigh = coin.price + pad
+                                    val stop = if (isLong) (coin.supportLevels.firstOrNull()?.takeIf { it < entryLow } ?: coin.price * 0.996)
+                                        else (coin.resistanceLevels.firstOrNull()?.takeIf { it > entryHigh } ?: coin.price * 1.004)
+                                    val target1 = if (isLong) (coin.resistanceLevels.firstOrNull { it > entryHigh } ?: coin.price * 1.005)
+                                        else (coin.supportLevels.firstOrNull() ?: coin.price * 0.995)
+                                    val target2 = if (isLong) maxOf(coin.price * 1.008, target1 * 1.001) else minOf(coin.price * 0.992, target1 * 0.999)
+                                    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text("${index + 1}. ${coin.symbol.removeSuffix("USDT")}/USDT  •  $direction", color = if (isLong) Green else Red, fontWeight = FontWeight.Bold)
+                                                Text("1H ${trendLabel(coin.trend1h)} • 15M ${trendLabel(coin.trend15m)} • 5M ${trendLabel(coin.trend5m)}", color = Muted, fontSize = 10.sp)
+                                                Text(coin.reason, color = Muted, fontSize = 10.sp)
+                                                Text("Volume 24J: $" + "%,.0f".format(Locale.US, coin.quoteVolume), color = Muted, fontSize = 10.sp)
+                                            }
+                                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text("$" + SignalJournal.fmt(coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
+                                            }
                                         }
-                                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Text("$" + "%,.5f".format(Locale.US, coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                            Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
-                                        }
+                                        Text("Area entry: ${SignalJournal.fmt(entryLow)} – ${SignalJournal.fmt(entryHigh)}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("SL: ${SignalJournal.fmt(stop)}  •  TP1: ${SignalJournal.fmt(target1)}  •  TP2: ${SignalJournal.fmt(target2)}", color = Muted, fontSize = 10.sp)
+                                        Text("SNR • S1: ${coin.supportLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  S2: ${coin.supportLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  S3: ${coin.supportLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFF80C8FF), fontSize = 10.sp)
+                                        Text("R1: ${coin.resistanceLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  R2: ${coin.resistanceLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  R3: ${coin.resistanceLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                     }
                                 }
                                 if (scannedCoins.isNotEmpty()) Text("Skor adalah peringkat heuristik, bukan probabilitas menang. Hasil bukan saran transaksi.", color = Muted, fontSize = 10.sp)
@@ -326,28 +576,66 @@ private fun AnalyzerApp(context: Context) {
                 }
                 "Riwayat" -> {
                     item {
-                        Text("RIWAYAT ANALISIS", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Catatan yang tersimpan di perangkat ini", color = Muted, fontSize = 12.sp)
+                        Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    historyRefreshLoading = true
+                                    historyRefreshError = null
+                                    try {
+                                        val currentRecords = SignalJournal.read(context)
+                                        val symbols = currentRecords.map { it.symbol }.toSet()
+                                        if (symbols.isNotEmpty()) {
+                                            val latestPrices = repo.latestPrices(symbols)
+                                            SignalJournal.updatePrices(context, latestPrices)
+                                        }
+                                        signalHistory = SignalJournal.read(context)
+                                    } catch (e: Exception) {
+                                        historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
+                                        signalHistory = SignalJournal.read(context)
+                                    } finally {
+                                        historyRefreshLoading = false
+                                    }
+                                }
+                            },
+                            enabled = !historyRefreshLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
+                        }
+                        historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
+                        OutlinedButton(
+                            onClick = { exportLauncher.launch("btc-structure-analysis.zip") },
+                            enabled = !exportLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (exportLoading) "MENYIAPKAN EXPORT…" else "EXPORT RIWAYAT (ZIP CSV + JSON)")
+                        }
+                        exportMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
+                        exportError?.let { Text("Export gagal: $it", color = Red, fontSize = 11.sp) }
                     }
-                    item { Text("Maksimal 100 catatan • disimpan lokal setelah data berhasil diperbarui", color = Muted, fontSize = 11.sp) }
-                    if (history.isEmpty()) item { EmptyCard("Belum ada riwayat. Perbarui data saat koneksi tersedia.") }
-                    items(history) { run ->
+                    if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
+                    items(signalHistory, key = { it.id }) { run ->
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)),
-                                    color = Muted, fontSize = 11.sp)
-                                Text("$" + "%,.2f".format(Locale.US, run.price), color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                                Text(run.bias, color = if (run.bias.contains("BULLISH")) Green else if (run.bias.contains("BEARISH")) Red else Amber,
-                                    fontWeight = FontWeight.Bold)
-                                Text(run.note, color = Muted, fontSize = 12.sp)
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
+                                Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
+                                Text("Area entry: ${SignalJournal.fmt(run.entryLow)} – ${SignalJournal.fmt(run.entryHigh)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Status entry: ${run.entryStatus}", color = if (run.entryStatus == "TERLEWAT") Red else if (run.entryStatus == "MASIH DALAM RANGE") Green else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("SL ${SignalJournal.fmt(run.stopLoss)} • TP1 ${SignalJournal.fmt(run.takeProfit1)} • TP2 ${SignalJournal.fmt(run.takeProfit2)}", color = Muted, fontSize = 11.sp)
+                                Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
+                                Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
+                                Divider(color = Color(0xFF20374B))
+                                Text("15 menit: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "BENAR") Green else if (run.result15m == "SALAH") Red else Muted, fontSize = 11.sp)
+                                Text("30 menit: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "BENAR") Green else if (run.result30m == "SALAH") Red else Muted, fontSize = 11.sp)
+                                Text("1 jam: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "BENAR") Green else if (run.result60m == "SALAH") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { OutlinedButton(onClick = {
-                        history = emptyList()
-                        context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).edit().remove("history").apply()
-                    }, modifier = Modifier.fillMaxWidth()) { Text("HAPUS RIWAYAT") } }
+                    item { Text("Hasil evaluasi mengukur arah perubahan harga dari harga sinyal; bukan bukti transaksi profit dan bukan auto-trading.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
@@ -416,7 +704,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (autoRefresh) "Auto scan Futures aktif • target setiap 10 menit" else "Auto scan Futures tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Auto scan Spot aktif • target setiap 10 menit" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -453,7 +741,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Sumber data", color = Muted, fontSize = 11.sp)
-                                    Text("Binance USDⓈ-M Futures • USDT Perpetual", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Binance Spot • pasangan USDT", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -462,7 +750,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Scan manual + auto scan 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scan manual + auto scan Spot setiap 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))

@@ -10,7 +10,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="User-enabled market scanner that checks public Binance Futures data and posts signal notifications; it never places orders." />
+                android:value="User-enabled background scanner for public Binance Spot market data; scans every ten minutes and posts signal notifications; it never places orders." />
         </service>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>

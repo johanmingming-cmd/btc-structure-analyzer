@@ -14,21 +14,64 @@ class BinanceRepository {
         .callTimeout(18, TimeUnit.SECONDS)
         .build()
 
-    suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
-        require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
+    suspend fun latestPrices(symbols: Set<String>): Map<String, Double> = withContext(Dispatchers.IO) {
+        if (symbols.isEmpty()) return@withContext emptyMap()
         val paths = listOf(
-            "https://fapi.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit",
-            "https://fapi1.binance.com/fapi/v1/klines?symbol=$symbol&interval=$interval&limit=$limit"
+            "https://data-api.binance.vision/api/v3/ticker/price",
+            "https://api.binance.com/api/v3/ticker/price",
+            "https://api1.binance.com/api/v3/ticker/price"
         )
         var lastError: Exception? = null
         for (url in paths) {
             try {
-                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer-Futures/0.4").get().build()
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "BTCStructureAnalyzer-Spot/0.5")
+                    .get()
+                    .build()
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("Server candle membalas HTTP ${response.code}")
+                    if (!response.isSuccessful) throw IllegalStateException("Binance ticker HTTP ${response.code}")
+                    val array = JSONArray(response.body?.string().orEmpty())
+                    val prices = buildMap {
+                        for (i in 0 until array.length()) {
+                            val row = array.optJSONObject(i) ?: continue
+                            val symbol = row.optString("symbol")
+                            if (symbol !in symbols) continue
+                            val price = row.optString("price").toDoubleOrNull() ?: continue
+                            if (price > 0.0) put(symbol, price)
+                        }
+                    }
+                    if (prices.isEmpty()) throw IllegalStateException("Harga terbaru untuk koin riwayat tidak ditemukan")
+                    return@withContext prices
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw IllegalStateException(
+            "Gagal mengambil harga terbaru Binance untuk evaluasi riwayat. Periksa jaringan/DNS. ${lastError?.message ?: ""}",
+            lastError
+        )
+    }
+
+    suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
+        require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
+        // Preserve the original Spot market-data route that was used before the Futures experiment.
+        // data-api.binance.vision is a public market-data REST endpoint; fall back to Spot API hosts.
+        val paths = listOf(
+            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
+            "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit",
+            "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=$interval&limit=$limit"
+        )
+        var lastError: Exception? = null
+        for (url in paths) {
+            try {
+                val request = Request.Builder().url(url).header("User-Agent", "BTCStructureAnalyzer-Spot/0.5").get().build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Server candle Spot membalas HTTP ${response.code}")
                     val body = response.body?.string().orEmpty()
                     val array = JSONArray(body)
-                    if (array.length() == 0) throw IllegalStateException("Data candle kosong")
+                    if (array.length() == 0) throw IllegalStateException("Data candle Spot kosong")
                     return@withContext buildList {
                         for (i in 0 until array.length()) {
                             val row = array.getJSONArray(i)
@@ -40,6 +83,6 @@ class BinanceRepository {
                 }
             } catch (e: Exception) { lastError = e }
         }
-        throw IllegalStateException("Gagal menghubungi endpoint Binance USDⓈ-M Futures. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
+        throw IllegalStateException("Gagal menghubungi endpoint Binance Spot. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
     }
 }
