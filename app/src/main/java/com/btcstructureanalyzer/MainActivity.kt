@@ -90,6 +90,7 @@ private fun AnalyzerApp(context: Context) {
     var lastRefresh by remember { mutableStateOf<Long?>(null) }
     var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
+    var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
@@ -131,7 +132,7 @@ private fun AnalyzerApp(context: Context) {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { loadHistory(); refresh() }
+    LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
 
     Scaffold(
         containerColor = Navy,
@@ -476,7 +477,7 @@ private fun AnalyzerApp(context: Context) {
                                         val scanner = CoinScanner(repo, context)
                                          try { scannedCoins = scanner.scan(15) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanDiagnostics = scanner.lastDiagnostics; scanLoading = false; scanCompleted = true }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 15 COIN BINANCE")
@@ -503,17 +504,33 @@ private fun AnalyzerApp(context: Context) {
                                 if (scannedCoins.isEmpty() && !scanLoading && scanError == null) Text(if (scanCompleted) "Pemindaian Futures selesai, tetapi belum ada koin yang memenuhi semua konfirmasi 1H • 15M • 5M. Coba lagi nanti." else "Tekan Pindai untuk mencari kandidat terbaru.", color = if (scanCompleted) Color(0xFFFFC857) else Muted, fontSize = 12.sp)
                                 scannedCoins.forEachIndexed { index, coin ->
                                     Divider(color = Color(0xFF20374B))
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("${index + 1}. ${coin.symbol.removeSuffix("USDT")}/USDT", color = Color.White, fontWeight = FontWeight.Bold)
-                                            Text("1H ${trendLabel(coin.trend1h)} • 15M ${trendLabel(coin.trend15m)} • 5M ${trendLabel(coin.trend5m)}", color = Muted, fontSize = 10.sp)
-                                            Text(coin.reason, color = Muted, fontSize = 10.sp)
-                                            Text("Volume 24J: $" + "%,.0f".format(Locale.US, coin.quoteVolume), color = Muted, fontSize = 10.sp)
+                                    val isLong = coin.trend1h == Trend.BULLISH && coin.trend15m == Trend.BULLISH
+                                    val direction = if (isLong) "LONG" else "SHORT"
+                                    val pad = coin.price * 0.00025
+                                    val entryLow = coin.price - pad
+                                    val entryHigh = coin.price + pad
+                                    val stop = if (isLong) (coin.supportLevels.firstOrNull()?.takeIf { it < entryLow } ?: coin.price * 0.996)
+                                        else (coin.resistanceLevels.firstOrNull()?.takeIf { it > entryHigh } ?: coin.price * 1.004)
+                                    val target1 = if (isLong) (coin.resistanceLevels.firstOrNull { it > entryHigh } ?: coin.price * 1.005)
+                                        else (coin.supportLevels.firstOrNull() ?: coin.price * 0.995)
+                                    val target2 = if (isLong) maxOf(coin.price * 1.008, target1 * 1.001) else minOf(coin.price * 0.992, target1 * 0.999)
+                                    Column(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text("${index + 1}. ${coin.symbol.removeSuffix("USDT")}/USDT  •  $direction", color = if (isLong) Green else Red, fontWeight = FontWeight.Bold)
+                                                Text("1H ${trendLabel(coin.trend1h)} • 15M ${trendLabel(coin.trend15m)} • 5M ${trendLabel(coin.trend5m)}", color = Muted, fontSize = 10.sp)
+                                                Text(coin.reason, color = Muted, fontSize = 10.sp)
+                                                Text("Volume 24J: $" + "%,.0f".format(Locale.US, coin.quoteVolume), color = Muted, fontSize = 10.sp)
+                                            }
+                                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                Text("$" + SignalJournal.fmt(coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
+                                            }
                                         }
-                                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Text("$" + "%,.5f".format(Locale.US, coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                            Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
-                                        }
+                                        Text("Area entry: ${SignalJournal.fmt(entryLow)} – ${SignalJournal.fmt(entryHigh)}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("SL: ${SignalJournal.fmt(stop)}  •  TP1: ${SignalJournal.fmt(target1)}  •  TP2: ${SignalJournal.fmt(target2)}", color = Muted, fontSize = 10.sp)
+                                        Text("SNR • S1: ${coin.supportLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  S2: ${coin.supportLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  S3: ${coin.supportLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFF80C8FF), fontSize = 10.sp)
+                                        Text("R1: ${coin.resistanceLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  R2: ${coin.resistanceLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  R3: ${coin.resistanceLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                     }
                                 }
                                 if (scannedCoins.isNotEmpty()) Text("Skor adalah peringkat heuristik, bukan probabilitas menang. Hasil bukan saran transaksi.", color = Muted, fontSize = 10.sp)
@@ -528,28 +545,30 @@ private fun AnalyzerApp(context: Context) {
                 }
                 "Riwayat" -> {
                     item {
-                        Text("RIWAYAT ANALISIS", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Catatan yang tersimpan di perangkat ini", color = Muted, fontSize = 12.sp)
+                        Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
+                        OutlinedButton(onClick = { signalHistory = SignalJournal.read(context) }, modifier = Modifier.fillMaxWidth()) { Text("SEGARKAN RIWAYAT") }
                     }
-                    item { Text("Maksimal 100 catatan • disimpan lokal setelah data berhasil diperbarui", color = Muted, fontSize = 11.sp) }
-                    if (history.isEmpty()) item { EmptyCard("Belum ada riwayat. Perbarui data saat koneksi tersedia.") }
-                    items(history) { run ->
+                    if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
+                    items(signalHistory, key = { it.id }) { run ->
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)),
-                                    color = Muted, fontSize = 11.sp)
-                                Text("$" + "%,.2f".format(Locale.US, run.price), color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                                Text(run.bias, color = if (run.bias.contains("BULLISH")) Green else if (run.bias.contains("BEARISH")) Red else Amber,
-                                    fontWeight = FontWeight.Bold)
-                                Text(run.note, color = Muted, fontSize = 12.sp)
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
+                                Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
+                                Text("Area entry: ${SignalJournal.fmt(run.entryLow)} – ${SignalJournal.fmt(run.entryHigh)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("SL ${SignalJournal.fmt(run.stopLoss)} • TP1 ${SignalJournal.fmt(run.takeProfit1)} • TP2 ${SignalJournal.fmt(run.takeProfit2)}", color = Muted, fontSize = 11.sp)
+                                Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
+                                Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
+                                Divider(color = Color(0xFF20374B))
+                                Text("15 menit: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "BENAR") Green else if (run.result15m == "SALAH") Red else Muted, fontSize = 11.sp)
+                                Text("30 menit: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "BENAR") Green else if (run.result30m == "SALAH") Red else Muted, fontSize = 11.sp)
+                                Text("1 jam: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "BENAR") Green else if (run.result60m == "SALAH") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { OutlinedButton(onClick = {
-                        history = emptyList()
-                        context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).edit().remove("history").apply()
-                    }, modifier = Modifier.fillMaxWidth()) { Text("HAPUS RIWAYAT") } }
+                    item { Text("Hasil evaluasi mengukur arah perubahan harga dari harga sinyal; bukan bukti transaksi profit dan bukan auto-trading.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
