@@ -3,7 +3,6 @@ package com.btcstructureanalyzer
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
-import kotlin.math.abs
 
 data class SignalRecord(
     val id: String,
@@ -24,7 +23,8 @@ data class SignalRecord(
     val price60m: Double? = null,
     val result15m: String = "PENDING",
     val result30m: String = "PENDING",
-    val result60m: String = "PENDING"
+    val result60m: String = "PENDING",
+    val entryStatus: String = "BELUM DICEK"
 )
 
 object SignalJournal {
@@ -51,7 +51,8 @@ object SignalJournal {
                     supports=levels("supports"), resistances=levels("resistances"),
                     price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
                     result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
-                    result60m=o.optString("result60m","PENDING")
+                    result60m=o.optString("result60m","PENDING"),
+                    entryStatus=o.optString("entryStatus","BELUM DICEK")
                 ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
             }
         }.getOrDefault(emptyList())
@@ -66,7 +67,7 @@ object SignalJournal {
             o.put("stopLoss", r.stopLoss); o.put("takeProfit1", r.takeProfit1); o.put("takeProfit2", r.takeProfit2); o.put("score", r.score)
             o.put("supports", JSONArray(r.supports)); o.put("resistances", JSONArray(r.resistances))
             o.put("price15m", r.price15m ?: JSONObject.NULL); o.put("price30m", r.price30m ?: JSONObject.NULL); o.put("price60m", r.price60m ?: JSONObject.NULL)
-            o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m)
+            o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m); o.put("entryStatus", r.entryStatus)
             array.put(o)
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
@@ -108,6 +109,11 @@ object SignalJournal {
             val current = prices[r.symbol] ?: return@map r
             var next = r
             val elapsed = now - r.time
+            if (elapsed < 15*60*1000L && r.entryStatus != "TERLEWAT" && (current < r.entryLow || current > r.entryHigh)) {
+                next = next.copy(entryStatus = "TERLEWAT")
+            } else if (elapsed < 15*60*1000L && r.entryStatus == "BELUM DICEK") {
+                next = next.copy(entryStatus = "MASIH DALAM RANGE")
+            }
             if (elapsed >= 15*60*1000L && r.price15m == null) next = next.copy(price15m=current, result15m=classify(r, current))
             if (elapsed >= 30*60*1000L && r.price30m == null) next = next.copy(price30m=current, result30m=classify(r, current))
             if (elapsed >= 60*60*1000L && r.price60m == null) next = next.copy(price60m=current, result60m=classify(r, current))
