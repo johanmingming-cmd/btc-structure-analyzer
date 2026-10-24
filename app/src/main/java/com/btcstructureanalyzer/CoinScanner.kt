@@ -76,6 +76,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             throw e
         }
         val excluded = setOf("USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "EUR", "TRY", "BRL", "GBP", "BIDR", "IDRT")
+        var eligibleBeforeCap = 0
         val candidates = buildList {
             for (i in 0 until tickers.length()) {
                 val row = tickers.getJSONObject(i)
@@ -93,6 +94,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 // Initial anti-microcap / anti-pump safeguards; these are filters, not safety guarantees.
                 if (quoteVolume >= 20_000_000.0 && lastPrice > 0.0 &&
                     kotlin.math.abs(changePercent) <= 12.0 && spreadPercent <= 0.50) {
+                    eligibleBeforeCap++
                     add(Triple(symbol, lastPrice, quoteVolume))
                 }
             }
@@ -157,7 +159,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         lastDiagnostics = ScanDiagnostics(
             spotPairs = tickers.length(),
             futuresWhitelist = futuresSymbols.size,
-            liquidCandidates = candidates.size,
+            liquidCandidates = eligibleBeforeCap,
             candlesChecked = candlesChecked,
             trendConfirmed = trendConfirmed,
             momentumConfirmed = momentumConfirmedCount,
