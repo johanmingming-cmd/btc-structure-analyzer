@@ -98,7 +98,10 @@ class FuturesAutoScanService : Service() {
             this, SIGNAL_ID, openAnalysis,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        manager.notify(SIGNAL_ID, NotificationCompat.Builder(this, SIGNAL_CHANNEL)
+        // Use a distinct notification ID for each new signal batch so Android
+        // treats each detection as a fresh notification rather than an update.
+        val signalNotificationId = (detectedAt % Int.MAX_VALUE).toInt()
+        manager.notify(signalNotificationId, NotificationCompat.Builder(this, SIGNAL_CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_btc)
             .setContentTitle("BTC Structure • Sinyal Spot baru")
             .setContentText("${newSignals.size} sinyal baru terdeteksi")
