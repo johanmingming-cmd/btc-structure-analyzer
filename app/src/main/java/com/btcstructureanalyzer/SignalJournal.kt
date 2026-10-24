@@ -24,7 +24,13 @@ data class SignalRecord(
     val result15m: String = "PENDING",
     val result30m: String = "PENDING",
     val result60m: String = "PENDING",
-    val entryStatus: String = "BELUM DICEK"
+    val entryStatus: String = "BELUM DICEK",
+    val evaluationTime15m: Long? = null,
+    val evaluationTime30m: Long? = null,
+    val evaluationTime60m: Long? = null,
+    val priceSource15m: String? = null,
+    val priceSource30m: String? = null,
+    val priceSource60m: String? = null
 )
 
 object SignalJournal {
@@ -52,7 +58,13 @@ object SignalJournal {
                     price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
                     result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
                     result60m=o.optString("result60m","PENDING"),
-                    entryStatus=o.optString("entryStatus","BELUM DICEK")
+                    entryStatus=o.optString("entryStatus","BELUM DICEK"),
+                    evaluationTime15m=o.optLong("evaluationTime15m").takeIf { o.has("evaluationTime15m") && !o.isNull("evaluationTime15m") && it > 0L },
+                    evaluationTime30m=o.optLong("evaluationTime30m").takeIf { o.has("evaluationTime30m") && !o.isNull("evaluationTime30m") && it > 0L },
+                    evaluationTime60m=o.optLong("evaluationTime60m").takeIf { o.has("evaluationTime60m") && !o.isNull("evaluationTime60m") && it > 0L },
+                    priceSource15m=o.optString("priceSource15m").takeIf { it.isNotBlank() },
+                    priceSource30m=o.optString("priceSource30m").takeIf { it.isNotBlank() },
+                    priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() }
                 ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
             }
         }.getOrDefault(emptyList())
@@ -68,6 +80,8 @@ object SignalJournal {
             o.put("supports", JSONArray(r.supports)); o.put("resistances", JSONArray(r.resistances))
             o.put("price15m", r.price15m ?: JSONObject.NULL); o.put("price30m", r.price30m ?: JSONObject.NULL); o.put("price60m", r.price60m ?: JSONObject.NULL)
             o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m); o.put("entryStatus", r.entryStatus)
+            o.put("evaluationTime15m", r.evaluationTime15m ?: JSONObject.NULL); o.put("evaluationTime30m", r.evaluationTime30m ?: JSONObject.NULL); o.put("evaluationTime60m", r.evaluationTime60m ?: JSONObject.NULL)
+            o.put("priceSource15m", r.priceSource15m ?: JSONObject.NULL); o.put("priceSource30m", r.priceSource30m ?: JSONObject.NULL); o.put("priceSource60m", r.priceSource60m ?: JSONObject.NULL)
             array.put(o)
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
@@ -114,9 +128,9 @@ object SignalJournal {
             } else if (elapsed < 15*60*1000L && r.entryStatus == "BELUM DICEK") {
                 next = next.copy(entryStatus = "MASIH DALAM RANGE")
             }
-            if (elapsed >= 15*60*1000L && r.price15m == null) next = next.copy(price15m=current, result15m=classify(r, current))
-            if (elapsed >= 30*60*1000L && r.price30m == null) next = next.copy(price30m=current, result30m=classify(r, current))
-            if (elapsed >= 60*60*1000L && r.price60m == null) next = next.copy(price60m=current, result60m=classify(r, current))
+            if (elapsed >= 15*60*1000L && r.price15m == null) next = next.copy(price15m=current, result15m=classify(r, current), evaluationTime15m=now, priceSource15m="BINANCE_SPOT_TICKER_REFRESH")
+            if (elapsed >= 30*60*1000L && r.price30m == null) next = next.copy(price30m=current, result30m=classify(r, current), evaluationTime30m=now, priceSource30m="BINANCE_SPOT_TICKER_REFRESH")
+            if (elapsed >= 60*60*1000L && r.price60m == null) next = next.copy(price60m=current, result60m=classify(r, current), evaluationTime60m=now, priceSource60m="BINANCE_SPOT_TICKER_REFRESH")
             next
         }
         write(context, updated)
