@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
@@ -32,7 +34,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,6 +97,31 @@ private fun AnalyzerApp(context: Context) {
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
     var historyRefreshError by remember { mutableStateOf<String?>(null) }
+    var exportLoading by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    var exportError by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) {
+            scope.launch {
+                exportLoading = true
+                exportMessage = null
+                exportError = null
+                try {
+                    withContext(Dispatchers.IO) {
+                        val recordsForExport = SignalJournal.read(context)
+                        val output = context.contentResolver.openOutputStream(uri, "w")
+                            ?: throw IllegalStateException("Tidak bisa membuka file tujuan")
+                        output.use { SignalExport.writeZip(it, recordsForExport) }
+                    }
+                    exportMessage = "Export ZIP berhasil disimpan. Jurnal lokal tidak diubah."
+                } catch (e: Exception) {
+                    exportError = e.message ?: "Export gagal disimpan"
+                } finally {
+                    exportLoading = false
+                }
+            }
+        }
+    }
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
@@ -576,6 +605,15 @@ private fun AnalyzerApp(context: Context) {
                             Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
                         }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
+                        OutlinedButton(
+                            onClick = { exportLauncher.launch("btc-structure-analysis.zip") },
+                            enabled = !exportLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (exportLoading) "MENYIAPKAN EXPORT…" else "EXPORT RIWAYAT (ZIP CSV + JSON)")
+                        }
+                        exportMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
+                        exportError?.let { Text("Export gagal: $it", color = Red, fontSize = 11.sp) }
                     }
                     if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
                     items(signalHistory, key = { it.id }) { run ->
