@@ -21,7 +21,20 @@ data class ScannedCoin(
     val resistanceLevels: List<Double> = emptyList()
 )
 
+data class ScanDiagnostics(
+    val spotPairs: Int = 0,
+    val futuresWhitelist: Int = 0,
+    val liquidCandidates: Int = 0,
+    val candlesChecked: Int = 0,
+    val trendConfirmed: Int = 0,
+    val momentumConfirmed: Int = 0,
+    val dataErrors: Int = 0,
+    val lastError: String? = null
+)
+
 class CoinScanner(private val repository: BinanceRepository, private val context: android.content.Context) {
+    var lastDiagnostics: ScanDiagnostics = ScanDiagnostics()
+        private set
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -46,12 +59,22 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 tickerError = e
             }
         }
-        val tickers = tickerData ?: throw IllegalStateException(
-            "Gagal mengambil daftar market Binance Spot. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
-            tickerError
-        )
+        val tickers = tickerData ?: run {
+            lastDiagnostics = ScanDiagnostics(lastError = "Spot API: ${tickerError?.message ?: "gagal mengambil ticker"}")
+            throw IllegalStateException(
+                "Gagal mengambil daftar market Binance Spot. Periksa jaringan/DNS. ${tickerError?.message ?: ""}",
+                tickerError
+            )
+        }
+        var candlesChecked = 0
+        var trendConfirmed = 0
+        var momentumConfirmedCount = 0
+        var dataErrors = 0
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
-        val futuresSymbols = fetchTradableUsdtPerpetualSymbols()
+        val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
+            lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
+            throw e
+        }
         val excluded = setOf("USDC", "FDUSD", "TUSD", "USDP", "DAI", "BUSD", "EUR", "TRY", "BRL", "GBP", "BIDR", "IDRT")
         val candidates = buildList {
             for (i in 0 until tickers.length()) {
@@ -81,6 +104,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val c5 = repository.candles("5m", 80, symbol)
                 val c15 = repository.candles("15m", 80, symbol)
                 val c1h = repository.candles("1h", 80, symbol)
+                candlesChecked++
                 val r5 = StructureAnalyzer.analyze("5m", c5)
                 val r15 = StructureAnalyzer.analyze("15m", c15)
                 val r1h = StructureAnalyzer.analyze("1h", c1h)
@@ -89,6 +113,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 if (!sameBullish && !sameBearish) continue
+                trendConfirmed++
 
                 // Confirmation uses only closed 5m candles; ignore the currently forming candle.
                 val closed5m = c5.dropLast(1).takeLast(3)
@@ -101,6 +126,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     netMove < 0.0 && lastCandle.close < lastCandle.open
                 }
                 if (!momentumConfirmed) continue
+                momentumConfirmedCount++
 
                 val volumeScore = (kotlin.math.ln(quoteVolume.coerceAtLeast(1.0)) * 2.0).toInt().coerceIn(0, 40)
                 val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
@@ -124,9 +150,19 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     .toList()
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason, supports, resistances))
             } catch (_: Exception) {
-                // Skip a symbol whose data is unavailable; keep the scanner moving.
+                // Count unavailable candle/API responses so a zero-result scan is explainable.
+                dataErrors++
             }
         }
+        lastDiagnostics = ScanDiagnostics(
+            spotPairs = tickers.length(),
+            futuresWhitelist = futuresSymbols.size,
+            liquidCandidates = candidates.size,
+            candlesChecked = candlesChecked,
+            trendConfirmed = trendConfirmed,
+            momentumConfirmed = momentumConfirmedCount,
+            dataErrors = dataErrors
+        )
         output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
     }
 
