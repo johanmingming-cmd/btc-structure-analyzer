@@ -66,6 +66,16 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 tickerError
             )
         }
+        val currentPrices = buildMap {
+            for (i in 0 until tickers.length()) {
+                val row = tickers.optJSONObject(i) ?: continue
+                val symbol = row.optString("symbol")
+                val current = row.optString("lastPrice").toDoubleOrNull() ?: continue
+                if (symbol.endsWith("USDT") && current > 0.0) put(symbol, current)
+            }
+        }
+        SignalJournal.updatePrices(context, currentPrices)
+
         var candlesChecked = 0
         var trendConfirmed = 0
         var momentumConfirmedCount = 0
@@ -165,7 +175,9 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             momentumConfirmed = momentumConfirmedCount,
             dataErrors = dataErrors
         )
-        output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
+        val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
+        SignalJournal.recordSignals(context, finalResults)
+        finalResults
     }
 
     private fun fetchTradableUsdtPerpetualSymbols(): Set<String> {
