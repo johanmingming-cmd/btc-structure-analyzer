@@ -558,6 +558,7 @@ private fun AnalyzerApp(context: Context) {
                                 Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                                 Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
                                 Text("Area entry: ${SignalJournal.fmt(run.entryLow)} – ${SignalJournal.fmt(run.entryHigh)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Status entry: ${run.entryStatus}", color = if (run.entryStatus == "TERLEWAT") Red else if (run.entryStatus == "MASIH DALAM RANGE") Green else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 Text("SL ${SignalJournal.fmt(run.stopLoss)} • TP1 ${SignalJournal.fmt(run.takeProfit1)} • TP2 ${SignalJournal.fmt(run.takeProfit2)}", color = Muted, fontSize = 11.sp)
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
