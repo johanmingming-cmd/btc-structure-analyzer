@@ -92,6 +92,7 @@ private fun AnalyzerApp(context: Context) {
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var scanLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
+    var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
     var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
     var scanCompleted by remember { mutableStateOf(false) }
 
