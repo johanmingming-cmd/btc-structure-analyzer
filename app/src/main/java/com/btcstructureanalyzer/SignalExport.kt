@@ -12,7 +12,7 @@ import java.util.zip.ZipOutputStream
 
 /** Read-only export of the existing local signal journal. */
 object SignalExport {
-    private data class Horizon(val minutes: Int, val price: Double?, val result: String)
+    private data class Horizon(val minutes: Int, val price: Double?, val result: String, val evaluationTime: Long?, val priceSource: String?)
 
     fun writeZip(output: OutputStream, records: List<SignalRecord>) {
         ZipOutputStream(output.buffered()).use { zip ->
@@ -26,9 +26,9 @@ object SignalExport {
     }
 
     private fun horizons(r: SignalRecord) = listOf(
-        Horizon(15, r.price15m, r.result15m),
-        Horizon(30, r.price30m, r.result30m),
-        Horizon(60, r.price60m, r.result60m)
+        Horizon(15, r.price15m, r.result15m, r.evaluationTime15m, r.priceSource15m),
+        Horizon(30, r.price30m, r.result30m, r.evaluationTime30m, r.priceSource30m),
+        Horizon(60, r.price60m, r.result60m, r.evaluationTime60m, r.priceSource60m)
     )
 
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
@@ -54,13 +54,16 @@ object SignalExport {
                 val directionCorrect = favorable?.let { when { it > 0.05 -> "true"; it < -0.05 -> "false"; else -> "null" } } ?: "null"
                 val quality = when {
                     h.price == null -> "EVALUATION_PRICE_MISSING"
-                    else -> "PRICE_PRESENT_EVALUATION_TIME_AND_SOURCE_NOT_STORED"
+                    h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
+                    h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
+                    else -> "PRICE_AND_EVALUATION_METADATA_AVAILABLE"
                 }
                 appendLine(listOf(
                     csv(r.id), csv(r.symbol), csv(r.direction), h.minutes.toString(),
-                    csv(isoUtc(r.time)), csv(isoUtc(r.time + h.minutes * 60_000L)), "",
+                    csv(isoUtc(r.time)), csv(isoUtc(r.time + h.minutes * 60_000L)), h.evaluationTime?.let { csv(isoUtc(it)) } ?: "",
                     num(r.price), h.price?.let(::num) ?: "", delta?.let(::num) ?: "", pct?.let(::num) ?: "",
-                    favorable?.let(::num) ?: "", csv(h.result), directionCorrect, "UNKNOWN_NOT_STORED", "", csv(quality)
+                    favorable?.let(::num) ?: "", csv(h.result), directionCorrect, csv(h.priceSource ?: "UNKNOWN_NOT_STORED"),
+                    h.evaluationTime?.let { ((it - (r.time + h.minutes * 60_000L)) / 1000L).toString() } ?: "", csv(quality)
                 ).joinToString(","))
             }
         }
@@ -77,7 +80,7 @@ object SignalExport {
                 val evaluation = JSONObject()
                     .put("target_horizon_minutes", h.minutes)
                     .put("target_time_utc", isoUtc(r.time + h.minutes * 60_000L))
-                    .put("evaluation_time_utc", JSONObject.NULL)
+                    .put("evaluation_time_utc", h.evaluationTime?.let { isoUtc(it) } ?: JSONObject.NULL)
                     .put("evaluation_price", h.price ?: JSONObject.NULL)
                     .put("price_change", delta ?: JSONObject.NULL)
                     .put("evaluation_price_change_pct", pct ?: JSONObject.NULL)
@@ -89,9 +92,9 @@ object SignalExport {
                         favorable < -0.05 -> false
                         else -> JSONObject.NULL
                     })
-                    .put("price_source", "UNKNOWN_NOT_STORED")
-                    .put("delay_seconds", JSONObject.NULL)
-                    .put("data_quality", if (h.price == null) "EVALUATION_PRICE_MISSING" else "PRICE_PRESENT_EVALUATION_TIME_AND_SOURCE_NOT_STORED")
+                    .put("price_source", h.priceSource ?: "UNKNOWN_NOT_STORED")
+                    .put("delay_seconds", h.evaluationTime?.let { (it - (r.time + h.minutes * 60_000L)) / 1000L } ?: JSONObject.NULL)
+                    .put("data_quality", when { h.price == null -> "EVALUATION_PRICE_MISSING"; h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"; h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"; else -> "PRICE_AND_EVALUATION_METADATA_AVAILABLE" })
                 evaluations.put(evaluation)
             }
             signals.put(JSONObject()
@@ -118,8 +121,8 @@ object SignalExport {
             .put("record_count", records.size)
             .put("export_mode", "READ_ONLY_LOCAL_SIGNAL_JOURNAL")
             .put("limitations", JSONArray(listOf(
-                "Legacy records do not store the exact evaluation timestamp.",
-                "Legacy records do not store the source of each evaluation price.",
+                "Legacy records may not store the exact evaluation timestamp or price source.",
+                "Newly recorded evaluations store the refresh time and Binance Spot ticker source; this is still not an exact historical target-time price.",
                 "target_time_utc is calculated from signal time and horizon; it is not the actual evaluation time.",
                 "Direction correctness is derived from stored price and the existing 0.05 percent threshold; it is not evidence of a profitable trade.",
                 "No historical OHLC candles are included, so TP/SL hit order cannot be determined."
