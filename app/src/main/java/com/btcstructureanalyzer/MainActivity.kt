@@ -190,8 +190,8 @@ private fun AnalyzerApp(context: Context) {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("BTC STRUCTURE", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
-                        Text("NEURAL MARKET ANALYZER  •  BTC/USDT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
+                        Text("PREDICTION LAB", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                        Text("MULTI-COIN FUTURES ANALYZER", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = .5.sp)
                     }
                     IconButton(onClick = { selected = "Notifikasi" }) {
                         Icon(Icons.Default.NotificationsNone, contentDescription = "Notifikasi", tint = Color.White)
@@ -222,7 +222,7 @@ private fun AnalyzerApp(context: Context) {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("MARKET OVERVIEW", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.4.sp)
-                            Text("BTC Structure Dashboard", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Market Opportunity Dashboard", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                             Text("Struktur harga multi-timeframe", color = Muted, fontSize = 12.sp)
                         }
                     }
@@ -497,8 +497,8 @@ private fun AnalyzerApp(context: Context) {
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("SCANNER OTOMATIS • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Sumber Binance Spot • pasangan USDT likuid • konfirmasi 1H + 15M + momentum 5M. BTC tidak masuk daftar kandidat. Mode analisis saja; tanpa auto entry.", color = Muted, fontSize = 11.sp)
+                                Text("USDT FUTURES OPPORTUNITIES • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Memeringkat koin USDT Futures berdasarkan likuiditas, tren 1H/15M, dan momentum 5M. Data harga/candle dari Binance Spot. Analisis saja; tidak menempatkan order.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
@@ -511,7 +511,7 @@ private fun AnalyzerApp(context: Context) {
                                         finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI 15 COIN BINANCE")
+                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
