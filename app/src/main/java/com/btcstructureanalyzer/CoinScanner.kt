@@ -37,6 +37,14 @@ data class ScanDiagnostics(
     val bearishTrendPairs: Int = 0,
     val unalignedTrendPairs: Int = 0,
     val momentumRejected: Int = 0,
+    val oneHourBullish: Int = 0,
+    val oneHourBearish: Int = 0,
+    val oneHourSideways: Int = 0,
+    val oneHourUnconfirmed: Int = 0,
+    val fifteenMinuteBullish: Int = 0,
+    val fifteenMinuteBearish: Int = 0,
+    val fifteenMinuteSideways: Int = 0,
+    val fifteenMinuteUnconfirmed: Int = 0,
     val lastError: String? = null
 )
 
@@ -122,6 +130,14 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var bearishTrendPairs = 0
         var unalignedTrendPairs = 0
         var momentumRejected = 0
+        var oneHourBullish = 0
+        var oneHourBearish = 0
+        var oneHourSideways = 0
+        var oneHourUnconfirmed = 0
+        var fifteenMinuteBullish = 0
+        var fifteenMinuteBearish = 0
+        var fifteenMinuteSideways = 0
+        var fifteenMinuteUnconfirmed = 0
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -163,6 +179,18 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val r15 = StructureAnalyzer.analyze("15m", c15)
                 val r1h = StructureAnalyzer.analyze("1h", c1h)
 
+                when (r1h.trend) {
+                    Trend.BULLISH -> oneHourBullish++
+                    Trend.BEARISH -> oneHourBearish++
+                    Trend.SIDEWAYS -> oneHourSideways++
+                    Trend.UNCONFIRMED -> oneHourUnconfirmed++
+                }
+                when (r15.trend) {
+                    Trend.BULLISH -> fifteenMinuteBullish++
+                    Trend.BEARISH -> fifteenMinuteBearish++
+                    Trend.SIDEWAYS -> fifteenMinuteSideways++
+                    Trend.UNCONFIRMED -> fifteenMinuteUnconfirmed++
+                }
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 when {
@@ -222,7 +250,15 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             bullishTrendPairs = bullishTrendPairs,
             bearishTrendPairs = bearishTrendPairs,
             unalignedTrendPairs = unalignedTrendPairs,
-            momentumRejected = momentumRejected
+            momentumRejected = momentumRejected,
+            oneHourBullish = oneHourBullish,
+            oneHourBearish = oneHourBearish,
+            oneHourSideways = oneHourSideways,
+            oneHourUnconfirmed = oneHourUnconfirmed,
+            fifteenMinuteBullish = fifteenMinuteBullish,
+            fifteenMinuteBearish = fifteenMinuteBearish,
+            fifteenMinuteSideways = fifteenMinuteSideways,
+            fifteenMinuteUnconfirmed = fifteenMinuteUnconfirmed
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
