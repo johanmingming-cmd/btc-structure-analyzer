@@ -4,6 +4,8 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class PendingEvaluation(val signalId: String, val symbol: String, val horizonMinutes: Int, val targetTime: Long)
+
 data class SignalRecord(
     val id: String,
     val time: Long,
@@ -121,17 +123,47 @@ object SignalJournal {
         if (prices.isEmpty()) return
         val updated = read(context).map { r ->
             val current = prices[r.symbol] ?: return@map r
-            var next = r
-            val elapsed = now - r.time
-            if (elapsed < 15*60*1000L && r.entryStatus != "TERLEWAT" && (current < r.entryLow || current > r.entryHigh)) {
-                next = next.copy(entryStatus = "TERLEWAT")
-            } else if (elapsed < 15*60*1000L && r.entryStatus == "BELUM DICEK") {
-                next = next.copy(entryStatus = "MASIH DALAM RANGE")
+            if (now - r.time >= 15 * 60 * 1000L || r.entryStatus == "TERLEWAT") return@map r
+            when {
+                current < r.entryLow || current > r.entryHigh -> r.copy(entryStatus = "TERLEWAT")
+                r.entryStatus == "BELUM DICEK" -> r.copy(entryStatus = "MASIH DALAM RANGE")
+                else -> r
             }
-            if (elapsed >= 15*60*1000L && r.price15m == null) next = next.copy(price15m=current, result15m=classify(r, current), evaluationTime15m=now, priceSource15m="BINANCE_SPOT_TICKER_REFRESH")
-            if (elapsed >= 30*60*1000L && r.price30m == null) next = next.copy(price30m=current, result30m=classify(r, current), evaluationTime30m=now, priceSource30m="BINANCE_SPOT_TICKER_REFRESH")
-            if (elapsed >= 60*60*1000L && r.price60m == null) next = next.copy(price60m=current, result60m=classify(r, current), evaluationTime60m=now, priceSource60m="BINANCE_SPOT_TICKER_REFRESH")
-            next
+        }
+        write(context, updated)
+    }
+
+    /** Returns due horizons that still need a historical Spot candle evaluation. */
+    fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> =
+        read(context).flatMap { r ->
+            listOf(15, 30, 60).mapNotNull { horizon ->
+                val target = r.time + horizon * 60_000L
+                val price = when (horizon) {
+                    15 -> r.price15m
+                    30 -> r.price30m
+                    else -> r.price60m
+                }
+                if (price == null && now >= target) PendingEvaluation(r.id, r.symbol, horizon, target) else null
+            }
+        }
+
+    /** Stores a historical candle close, not the live ticker at refresh time. */
+    fun updateHistoricalEvaluation(
+        context: Context,
+        signalId: String,
+        horizonMinutes: Int,
+        price: Double,
+        candleCloseTime: Long,
+        source: String = "BINANCE_SPOT_1M_CANDLE_CLOSE"
+    ) {
+        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(15, 30, 60)) return
+        val updated = read(context).map { r ->
+            if (r.id != signalId) return@map r
+            when (horizonMinutes) {
+                15 -> if (r.price15m == null) r.copy(price15m=price, result15m=classify(r, price), evaluationTime15m=candleCloseTime, priceSource15m=source) else r
+                30 -> if (r.price30m == null) r.copy(price30m=price, result30m=classify(r, price), evaluationTime30m=candleCloseTime, priceSource30m=source) else r
+                else -> if (r.price60m == null) r.copy(price60m=price, result60m=classify(r, price), evaluationTime60m=candleCloseTime, priceSource60m=source) else r
+            }
         }
         write(context, updated)
     }
