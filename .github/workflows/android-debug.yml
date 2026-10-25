@@ -6,6 +6,7 @@ on:
     branches:
       - feature/prediction-lab-signing
       - fix/historical-spot-evaluation
+      - diagnostics/spot-scan-status
 
 permissions:
   contents: read
