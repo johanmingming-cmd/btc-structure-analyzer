@@ -556,6 +556,7 @@ private fun AnalyzerApp(context: Context) {
                                             d.candidateTrendDetails.forEach { detail -> Text(detail, color = Muted, fontSize = 10.sp) }
                                             Text("Tren bullish: ${d.bullishTrendPairs} • bearish: ${d.bearishTrendPairs} • campuran/belum jelas: ${d.unalignedTrendPairs}", color = Muted, fontSize = 11.sp)
                                             Text("Momentum 5M lolos: ${d.momentumConfirmed} • ditolak: ${d.momentumRejected}", color = Muted, fontSize = 11.sp)
+                                            Text("Ditolak: level lawan berada di rentang entry: ${d.nearbyLevelRejected}", color = Muted, fontSize = 11.sp)
                                             Text("Error data candle: ${d.dataErrors}", color = if (d.dataErrors > 0) Amber else Muted, fontSize = 11.sp)
                                             d.lastError?.let { Text("Error: $it", color = Red, fontSize = 11.sp) }
                                         }
