@@ -56,7 +56,9 @@ object SignalExport {
                     h.price == null -> "EVALUATION_PRICE_MISSING"
                     h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
                     h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
-                    else -> "PRICE_AND_EVALUATION_METADATA_AVAILABLE"
+                    h.priceSource != "BINANCE_SPOT_1M_CANDLE_CLOSE" -> "LEGACY_NON_HISTORICAL_EVALUATION"
+                    kotlin.math.abs(h.evaluationTime - (r.time + h.minutes * 60_000L)) > 90_000L -> "EVALUATION_OUTSIDE_TARGET_WINDOW"
+                    else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
                 }
                 appendLine(listOf(
                     csv(r.id), csv(r.symbol), csv(r.direction), h.minutes.toString(),
@@ -94,7 +96,14 @@ object SignalExport {
                     })
                     .put("price_source", h.priceSource ?: "UNKNOWN_NOT_STORED")
                     .put("delay_seconds", h.evaluationTime?.let { (it - (r.time + h.minutes * 60_000L)) / 1000L } ?: JSONObject.NULL)
-                    .put("data_quality", when { h.price == null -> "EVALUATION_PRICE_MISSING"; h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"; h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"; else -> "PRICE_AND_EVALUATION_METADATA_AVAILABLE" })
+                    .put("data_quality", when {
+                        h.price == null -> "EVALUATION_PRICE_MISSING"
+                        h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
+                        h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
+                        h.priceSource != "BINANCE_SPOT_1M_CANDLE_CLOSE" -> "LEGACY_NON_HISTORICAL_EVALUATION"
+                        kotlin.math.abs(h.evaluationTime - (r.time + h.minutes * 60_000L)) > 90_000L -> "EVALUATION_OUTSIDE_TARGET_WINDOW"
+                        else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
+                    })
                 evaluations.put(evaluation)
             }
             signals.put(JSONObject()
