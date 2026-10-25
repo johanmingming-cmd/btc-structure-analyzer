@@ -528,7 +528,10 @@ private fun AnalyzerApp(context: Context) {
                                         scanError = null
                                         scannedCoins = emptyList()
                                         val scanner = CoinScanner(repo, context)
-                                         try { scannedCoins = scanner.scan(15) }
+                                         try {
+                                            scannedCoins = scanner.scan(15)
+                                            SignalJournal.recordSignals(context, scannedCoins)
+                                        }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
                                         finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
