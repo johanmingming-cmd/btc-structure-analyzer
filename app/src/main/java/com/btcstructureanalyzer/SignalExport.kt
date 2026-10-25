@@ -122,7 +122,7 @@ object SignalExport {
             .put("export_mode", "READ_ONLY_LOCAL_SIGNAL_JOURNAL")
             .put("limitations", JSONArray(listOf(
                 "Legacy records may not store the exact evaluation timestamp or price source.",
-                "Newly recorded evaluations store the refresh time and Binance Spot ticker source; this is still not an exact historical target-time price.",
+                "New evaluations use the nearest completed Binance Spot 1m candle close around the target time. The stored evaluation timestamp is the candle close timestamp; quality is marked outside the target window when it differs by more than 90 seconds.",
                 "target_time_utc is calculated from signal time and horizon; it is not the actual evaluation time.",
                 "Direction correctness is derived from stored price and the existing 0.05 percent threshold; it is not evidence of a profitable trade.",
                 "No historical OHLC candles are included, so TP/SL hit order cannot be determined."
@@ -149,9 +149,9 @@ The ZIP contains no API keys or credentials.
 TIME FIELDS
 signal_time_utc is the stored signal creation time.
 target_time_utc is calculated as signal time + 15/30/60 minutes.
-evaluation_time_utc is blank/null because the current journal does not store the actual time
-when an evaluation price was fetched. Do not treat target_time_utc as actual evaluation time.
-price_source is UNKNOWN_NOT_STORED for legacy data because the journal does not persist it.
+evaluation_time_utc is the timestamp of the historical 1m candle close used for evaluation.
+Legacy records may lack evaluation timestamps or source metadata; new records store both.
+data_quality identifies missing metadata and evaluations outside the +/-90 second target window.
 All timestamps included here are UTC.
 
 EVALUATION FIELDS
@@ -166,7 +166,7 @@ Missing prices are blank in CSV and null in JSON; they are never converted to ze
 LIMITATIONS
 The current journal holds up to 500 records. Existing evaluation prices may have been fetched
 during a manual refresh after the target horizon, rather than at the exact target time.
-No exact evaluation timestamps, price-source metadata, or historical OHLC candles are stored.
+Legacy records may lack exact evaluation timestamps and source metadata. Evaluated prices and candle close times are stored, but the full historical OHLC series needed to determine TP/SL hit order is not stored.
 This export cannot establish whether entry was reached or whether TP/SL was hit first.
 PENDING or missing evaluations are not counted as losses.
 
