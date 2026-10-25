@@ -637,6 +637,16 @@ private fun AnalyzerApp(context: Context) {
                                                 }
                                             }
                                         }
+                                        // Evaluate TP/SL separately from directional 15/30/60m results.
+                                        // Only signals with a verified entry are scored as hypothetical trades.
+                                        val dueTradeOutcomes = SignalJournal.pendingTradeOutcomes(context)
+                                        for (record in dueTradeOutcomes) {
+                                            runCatching {
+                                                val bars = repo.historicalSpotBars(record.symbol, record.time, record.time + 60 * 60_000L)
+                                                val outcome = SignalJournal.evaluateTradeOutcome(record, bars)
+                                                SignalJournal.updateTradeOutcome(context, record.id, outcome)
+                                            }
+                                        }
                                         signalHistory = SignalJournal.read(context)
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
@@ -679,6 +689,7 @@ private fun AnalyzerApp(context: Context) {
                                 Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("Hasil TP/SL historis: ${run.tradeOutcome}", color = when (run.tradeOutcome) { "TP1_TERCAPAI", "TP2_TERCAPAI" -> Green; "SL_TERSENTUH", "ENTRY_TERLEWAT" -> Red; else -> Muted }, fontSize = 11.sp)
                             }
                         }
                     }
