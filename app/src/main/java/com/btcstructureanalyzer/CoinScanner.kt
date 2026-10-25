@@ -45,6 +45,7 @@ data class ScanDiagnostics(
     val fifteenMinuteBearish: Int = 0,
     val fifteenMinuteSideways: Int = 0,
     val fifteenMinuteUnconfirmed: Int = 0,
+    val candidateTrendDetails: List<String> = emptyList(),
     val lastError: String? = null
 )
 
@@ -138,6 +139,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var fifteenMinuteBearish = 0
         var fifteenMinuteSideways = 0
         var fifteenMinuteUnconfirmed = 0
+        val candidateTrendDetails = mutableListOf<String>()
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -191,6 +193,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     Trend.SIDEWAYS -> fifteenMinuteSideways++
                     Trend.UNCONFIRMED -> fifteenMinuteUnconfirmed++
                 }
+                candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} • 15M: ${r15.trend.name}")
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 when {
@@ -258,7 +261,8 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             fifteenMinuteBullish = fifteenMinuteBullish,
             fifteenMinuteBearish = fifteenMinuteBearish,
             fifteenMinuteSideways = fifteenMinuteSideways,
-            fifteenMinuteUnconfirmed = fifteenMinuteUnconfirmed
+            fifteenMinuteUnconfirmed = fifteenMinuteUnconfirmed,
+            candidateTrendDetails = candidateTrendDetails.toList()
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
