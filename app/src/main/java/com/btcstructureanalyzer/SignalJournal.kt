@@ -145,7 +145,7 @@ object SignalJournal {
                 }
                 if (price == null && now >= target) PendingEvaluation(r.id, r.symbol, horizon, target) else null
             }
-        }
+        }.sortedBy { it.targetTime }
 
     /** Stores a historical candle close, not the live ticker at refresh time. */
     fun updateHistoricalEvaluation(
