@@ -74,7 +74,30 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 if (symbol.endsWith("USDT") && current > 0.0) put(symbol, current)
             }
         }
+        // Entry status may use the current ticker, but prediction evaluation must use
+        // the historical Spot 1m candle close nearest each 15/30/60m target time.
         SignalJournal.updatePrices(context, currentPrices)
+        val historicalCache = mutableMapOf<Pair<String, Long>, Pair<Double, Long>?>()
+        for (pending in SignalJournal.pendingEvaluations(context).take(40)) {
+            val minuteKey = pending.targetTime / 60_000L
+            val cacheKey = pending.symbol to minuteKey
+            val historical = if (historicalCache.containsKey(cacheKey)) {
+                historicalCache[cacheKey]
+            } else {
+                runCatching { repository.historicalSpotClose(pending.symbol, pending.targetTime) }
+                    .getOrNull()
+                    .also { historicalCache[cacheKey] = it }
+            }
+            if (historical != null) {
+                SignalJournal.updateHistoricalEvaluation(
+                    context = context,
+                    signalId = pending.signalId,
+                    horizonMinutes = pending.horizonMinutes,
+                    price = historical.first,
+                    candleCloseTime = historical.second
+                )
+            }
+        }
 
         var candlesChecked = 0
         var trendConfirmed = 0
