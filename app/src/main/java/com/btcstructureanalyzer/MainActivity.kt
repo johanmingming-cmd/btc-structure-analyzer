@@ -550,6 +550,8 @@ private fun AnalyzerApp(context: Context) {
                                             Text("Pasangan Spot: ${d.spotPairs} • Daftar Futures: ${d.futuresWhitelist}", color = Muted, fontSize = 11.sp)
                                             Text("Lolos volume/spread/perubahan: ${d.liquidCandidates}", color = Muted, fontSize = 11.sp)
                                             Text("Candle berhasil diperiksa: ${d.candlesChecked} • Tren searah: ${d.trendConfirmed}", color = Muted, fontSize = 11.sp)
+                                            Text("Tren 1H — naik: ${d.oneHourBullish}, turun: ${d.oneHourBearish}, sideways: ${d.oneHourSideways}, belum terkonfirmasi: ${d.oneHourUnconfirmed}", color = Muted, fontSize = 11.sp)
+                                            Text("Tren 15M — naik: ${d.fifteenMinuteBullish}, turun: ${d.fifteenMinuteBearish}, sideways: ${d.fifteenMinuteSideways}, belum terkonfirmasi: ${d.fifteenMinuteUnconfirmed}", color = Muted, fontSize = 11.sp)
                                             Text("Tren bullish: ${d.bullishTrendPairs} • bearish: ${d.bearishTrendPairs} • campuran/belum jelas: ${d.unalignedTrendPairs}", color = Muted, fontSize = 11.sp)
                                             Text("Momentum 5M lolos: ${d.momentumConfirmed} • ditolak: ${d.momentumRejected}", color = Muted, fontSize = 11.sp)
                                             Text("Error data candle: ${d.dataErrors}", color = if (d.dataErrors > 0) Amber else Muted, fontSize = 11.sp)
