@@ -33,6 +33,10 @@ data class ScanDiagnostics(
     val trendConfirmed: Int = 0,
     val momentumConfirmed: Int = 0,
     val dataErrors: Int = 0,
+    val bullishTrendPairs: Int = 0,
+    val bearishTrendPairs: Int = 0,
+    val unalignedTrendPairs: Int = 0,
+    val momentumRejected: Int = 0,
     val lastError: String? = null
 )
 
@@ -114,6 +118,10 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var trendConfirmed = 0
         var momentumConfirmedCount = 0
         var dataErrors = 0
+        var bullishTrendPairs = 0
+        var bearishTrendPairs = 0
+        var unalignedTrendPairs = 0
+        var momentumRejected = 0
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -157,6 +165,11 @@ class CoinScanner(private val repository: BinanceRepository, private val context
 
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
+                when {
+                    sameBullish -> bullishTrendPairs++
+                    sameBearish -> bearishTrendPairs++
+                    else -> unalignedTrendPairs++
+                }
                 if (!sameBullish && !sameBearish) continue
                 trendConfirmed++
 
@@ -169,7 +182,10 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 } else {
                     netMove < 0.0 && lastCandle.close < lastCandle.open
                 }
-                if (!momentumConfirmed) continue
+                if (!momentumConfirmed) {
+                    momentumRejected++
+                    continue
+                }
                 momentumConfirmedCount++
 
                 val volumeScore = (kotlin.math.ln(quoteVolume.coerceAtLeast(1.0)) * 2.0).toInt().coerceIn(0, 40)
@@ -202,7 +218,11 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             candlesChecked = candlesChecked,
             trendConfirmed = trendConfirmed,
             momentumConfirmed = momentumConfirmedCount,
-            dataErrors = dataErrors
+            dataErrors = dataErrors,
+            bullishTrendPairs = bullishTrendPairs,
+            bearishTrendPairs = bearishTrendPairs,
+            unalignedTrendPairs = unalignedTrendPairs,
+            momentumRejected = momentumRejected
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
