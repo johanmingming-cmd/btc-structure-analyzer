@@ -54,6 +54,46 @@ class BinanceRepository {
         )
     }
 
+
+    /** Finds the nearest completed 1m Spot candle close around a requested evaluation target. */
+    suspend fun historicalSpotClose(symbol: String, targetTime: Long): Pair<Double, Long>? = withContext(Dispatchers.IO) {
+        val minute = targetTime / 60_000L * 60_000L
+        val start = (minute - 60_000L).coerceAtLeast(0L)
+        val end = targetTime + 120_000L
+        val paths = listOf(
+            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=4",
+            "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=4",
+            "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=4"
+        )
+        var lastError: Exception? = null
+        for (url in paths) {
+            try {
+                val request = Request.Builder().url(url)
+                    .header("User-Agent", "PredictionLab-SpotHistoricalEvaluation/1.0").get().build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Spot historical candle HTTP ${response.code}")
+                    val rows = JSONArray(response.body?.string().orEmpty())
+                    val candidates = buildList {
+                        for (i in 0 until rows.length()) {
+                            val row = rows.optJSONArray(i) ?: continue
+                            if (row.length() < 7) continue
+                            val close = row.optString(4).toDoubleOrNull() ?: continue
+                            val closeTime = row.optLong(6, -1L)
+                            // Accept only completed candle closes within 90 seconds of the target.
+                            if (close > 0.0 && closeTime >= targetTime - 30_000L &&
+                                closeTime <= targetTime + 90_000L) add(close to closeTime)
+                        }
+                    }
+                    return@withContext candidates.minByOrNull { kotlin.math.abs(it.second - targetTime) }
+                }
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        if (lastError != null) throw IllegalStateException("Gagal mengambil candle historis Spot untuk evaluasi: ${lastError.message}", lastError)
+        null
+    }
+
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
         // Preserve the original Spot market-data route that was used before the Futures experiment.
