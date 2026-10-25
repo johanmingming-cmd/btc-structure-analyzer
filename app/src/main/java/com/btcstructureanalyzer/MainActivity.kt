@@ -620,6 +620,23 @@ private fun AnalyzerApp(context: Context) {
                                             val latestPrices = repo.latestPrices(symbols)
                                             SignalJournal.updatePrices(context, latestPrices)
                                         }
+                                        // Resolve due 15/30/60-minute horizons from historical 1m Spot candles,
+                                        // never from the current live ticker. Keep individual failures retryable.
+                                        val dueEvaluations = SignalJournal.pendingEvaluations(context)
+                                        for (pending in dueEvaluations) {
+                                            runCatching {
+                                                val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
+                                                if (historical != null) {
+                                                    SignalJournal.updateHistoricalEvaluation(
+                                                        context,
+                                                        pending.signalId,
+                                                        pending.horizonMinutes,
+                                                        historical.first,
+                                                        historical.second
+                                                    )
+                                                }
+                                            }
+                                        }
                                         signalHistory = SignalJournal.read(context)
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
