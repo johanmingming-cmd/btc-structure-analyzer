@@ -236,11 +236,11 @@ object SignalJournal {
     }
 
     fun pendingTradeOutcomes(context: Context, now: Long = System.currentTimeMillis()): List<SignalRecord> =
-        read(context).filter { it.tradeOutcome == "PENDING" && now >= it.time + 60 * 60_000L }
+        read(context).filter { it.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP") && now >= it.time + 60 * 60_000L }
 
     fun updateTradeOutcome(context: Context, signalId: String, outcome: TradeOutcome) {
         val updated = read(context).map { r ->
-            if (r.id == signalId && r.tradeOutcome == "PENDING") r.copy(
+            if (r.id == signalId && r.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP")) r.copy(
                 tradeOutcome = outcome.status,
                 tradeOutcomeTime = outcome.eventTime,
                 entryStatus = if (outcome.status == "ENTRY_TERLEWAT") "TERLEWAT" else r.entryStatus
