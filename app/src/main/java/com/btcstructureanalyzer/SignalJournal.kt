@@ -100,13 +100,30 @@ object SignalJournal {
             val high = coin.price + pad
             val supports = coin.supportLevels
             val resistances = coin.resistanceLevels
+            // Keep structural invalidation levels when available; use a conservative fallback otherwise.
             val stop = if (direction == "LONG") {
                 (supports.firstOrNull() ?: coin.price * 0.996).let { if (it < low) it else coin.price * 0.996 }
             } else {
                 (resistances.firstOrNull() ?: coin.price * 1.004).let { if (it > high) it else coin.price * 1.004 }
             }
-            val tp1 = if (direction == "LONG") supportsAbove(coin, high) ?: coin.price * 1.005 else supports.firstOrNull() ?: coin.price * 0.995
-            val tp2 = if (direction == "LONG") (coin.price * 1.008).coerceAtLeast(tp1 * 1.001) else (coin.price * 0.992).coerceAtMost(tp1 * 0.999)
+            val risk = kotlin.math.abs(coin.price - stop).coerceAtLeast(coin.price * 0.001)
+            val structuralTp1 = if (direction == "LONG") supportsAbove(coin, high) else supports.firstOrNull()
+            val structuralTp2 = if (direction == "LONG") {
+                coin.resistanceLevels.firstOrNull { it > (structuralTp1 ?: high) }
+            } else {
+                coin.supportLevels.firstOrNull { it < (structuralTp1 ?: low) }
+            }
+            // Targets must be on the profitable side and keep minimum 1.5R / 2R distances.
+            val tp1 = if (direction == "LONG") {
+                maxOf(structuralTp1?.takeIf { it > high } ?: coin.price * 1.005, coin.price + risk * 1.5)
+            } else {
+                minOf(structuralTp1?.takeIf { it < low } ?: coin.price * 0.995, coin.price - risk * 1.5)
+            }
+            val tp2 = if (direction == "LONG") {
+                maxOf(structuralTp2?.takeIf { it > tp1 } ?: coin.price * 1.008, coin.price + risk * 2.0, tp1 * 1.001)
+            } else {
+                minOf(structuralTp2?.takeIf { it < tp1 } ?: coin.price * 0.992, coin.price - risk * 2.0, tp1 * 0.999)
+            }
             records = listOf(SignalRecord(
                 id="${coin.symbol}-${direction}-${now}", time=now, symbol=coin.symbol, direction=direction, price=coin.price,
                 entryLow=low, entryHigh=high, stopLoss=stop, takeProfit1=tp1, takeProfit2=tp2,
