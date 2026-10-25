@@ -1,6 +1,10 @@
 package com.btcstructureanalyzer
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -74,25 +78,39 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 if (symbol.endsWith("USDT") && current > 0.0) put(symbol, current)
             }
         }
-        // Entry status may use the current ticker, but prediction evaluation must use
-        // the historical Spot 1m candle close nearest each 15/30/60m target time.
+        // Live ticker is only for entry status. Historical evaluation uses completed Spot 1m candles.
         SignalJournal.updatePrices(context, currentPrices)
-        val historicalCache = mutableMapOf<Pair<String, Long>, Pair<Double, Long>?>()
-        for (pending in SignalJournal.pendingEvaluations(context).take(40)) {
-            val minuteKey = pending.targetTime / 60_000L
-            val cacheKey = pending.symbol to minuteKey
-            val historical = if (historicalCache.containsKey(cacheKey)) {
-                historicalCache[cacheKey]
-            } else {
-                runCatching { repository.historicalSpotClose(pending.symbol, pending.targetTime) }
-                    .getOrNull()
-                    .also { historicalCache[cacheKey] = it }
-            }
+
+        // Fetch a small bounded batch with limited concurrency so historical lookups do not
+        // block the scan for many serial network timeouts. Apply journal writes sequentially
+        // afterward because the journal is stored as one SharedPreferences JSON array.
+        val pending = SignalJournal.pendingEvaluations(context).take(MAX_HISTORICAL_EVALUATIONS_PER_SCAN)
+        val historicalResults = coroutineScope {
+            val permits = Semaphore(HISTORICAL_LOOKUP_CONCURRENCY)
+            pending.map { item ->
+                async(Dispatchers.IO) {
+                    val key = item.symbol to (item.targetTime / 60_000L)
+                    permits.withPermit {
+                        val cached = historicalCache[key]
+                        if (cached != null || historicalCache.containsKey(key)) {
+                            item to cached
+                        } else {
+                            val found = runCatching {
+                                repository.historicalSpotClose(item.symbol, item.targetTime)
+                            }.getOrNull()
+                            synchronized(historicalCache) { historicalCache[key] = found }
+                            item to found
+                        }
+                    }
+                }
+            }.map { it.await() }
+        }
+        historicalResults.forEach { (item, historical) ->
             if (historical != null) {
                 SignalJournal.updateHistoricalEvaluation(
                     context = context,
-                    signalId = pending.signalId,
-                    horizonMinutes = pending.horizonMinutes,
+                    signalId = item.signalId,
+                    horizonMinutes = item.horizonMinutes,
                     price = historical.first,
                     candleCloseTime = historical.second
                 )
@@ -144,13 +162,11 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val r15 = StructureAnalyzer.analyze("15m", c15)
                 val r1h = StructureAnalyzer.analyze("1h", c1h)
 
-                // Spot market scanner: higher-timeframe structure must agree.
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 if (!sameBullish && !sameBearish) continue
                 trendConfirmed++
 
-                // Confirmation uses only closed 5m candles; ignore the currently forming candle.
                 val closed5m = c5.dropLast(1).takeLast(3)
                 if (closed5m.size < 3) continue
                 val netMove = closed5m.last().close - closed5m.first().open
@@ -167,8 +183,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
                 val directionText = if (sameBullish) "bullish" else "bearish"
                 val reason = "Konfirmasi: struktur Spot 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
-                // Confirmed 15m swing pivots provide nearby, data-derived S/R levels.
-                // Supports are below the current spot price; resistances are above it.
                 val supports = r15.swings.asSequence()
                     .filter { !it.isHigh && it.price < lastPrice }
                     .map { it.price }
@@ -185,7 +199,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     .toList()
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason, supports, resistances))
             } catch (_: Exception) {
-                // Count unavailable candle/API responses so a zero-result scan is explainable.
                 dataErrors++
             }
         }
@@ -202,6 +215,8 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         SignalJournal.recordSignals(context, finalResults)
         finalResults
     }
+
+    private val historicalCache = mutableMapOf<Pair<String, Long>, Pair<Double, Long>?>()
 
     private fun fetchTradableUsdtPerpetualSymbols(): Set<String> {
         // Futures is only a reference list; market data and analysis remain on Binance Spot REST.
@@ -239,7 +254,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             }
         }
 
-        // Reuse the last verified Futures symbol list if the endpoint is blocked, for up to 30 days.
         val cached = prefs.getString(cacheKey, null).orEmpty()
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         val savedAt = prefs.getLong(timeKey, 0L)
@@ -252,5 +266,10 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             "Daftar Futures belum tersedia dan belum ada cache valid. Sambungkan VPN sekali untuk menyimpan daftar acuan; setelah itu scan Spot bisa berjalan tanpa mengakses endpoint Futures setiap kali. ${lastError?.message ?: ""}",
             lastError
         )
+    }
+
+    private companion object {
+        const val MAX_HISTORICAL_EVALUATIONS_PER_SCAN = 12
+        const val HISTORICAL_LOOKUP_CONCURRENCY = 4
     }
 }
