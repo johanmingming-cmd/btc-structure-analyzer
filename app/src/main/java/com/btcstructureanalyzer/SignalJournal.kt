@@ -199,14 +199,28 @@ object SignalJournal {
      * which was touched first; mark AMBIGU rather than assuming a favorable order.
      */
     fun evaluateTradeOutcome(record: SignalRecord, bars: List<HistoricalBar>): TradeOutcome {
-        if (record.entryStatus == "TERLEWAT") return TradeOutcome("ENTRY_TERLEWAT")
-        if (record.entryStatus != "MASIH DALAM RANGE") return TradeOutcome("ENTRY_TIDAK_TERVERIFIKASI")
         val ordered = bars.filter {
             it.openTime >= record.time && it.closeTime <= record.time + 60 * 60_000L &&
                 it.high.isFinite() && it.low.isFinite() && it.high > 0.0 && it.low > 0.0 && it.high >= it.low
         }.sortedBy { it.openTime }
         if (ordered.isEmpty()) return TradeOutcome("DATA_TIDAK_CUKUP")
-        for (bar in ordered) {
+
+        // Entry is verified from historical candle ranges during the signal's first 15 minutes,
+        // not from a later live ticker snapshot.
+        val entryDeadline = record.time + 15 * 60_000L
+        val entryBar = ordered.firstOrNull { bar ->
+            bar.openTime < entryDeadline && bar.closeTime >= record.time &&
+                bar.low <= record.entryHigh && bar.high >= record.entryLow
+        } ?: return if (ordered.last().closeTime < entryDeadline) {
+            TradeOutcome("DATA_TIDAK_CUKUP")
+        } else {
+            TradeOutcome("ENTRY_TERLEWAT", ordered.lastOrNull { it.closeTime <= entryDeadline }?.closeTime)
+        }
+
+        // Evaluate TP/SL from the first candle whose range confirms entry. If SL and TP
+        // are both inside one OHLC candle, order is unknowable, so keep it AMBIGU.
+        val tradeBars = ordered.filter { it.openTime >= entryBar.openTime }
+        for (bar in tradeBars) {
             val slHit = if (record.direction == "LONG") bar.low <= record.stopLoss else bar.high >= record.stopLoss
             val tp2Hit = if (record.direction == "LONG") bar.high >= record.takeProfit2 else bar.low <= record.takeProfit2
             val tp1Hit = if (record.direction == "LONG") bar.high >= record.takeProfit1 else bar.low <= record.takeProfit1
@@ -215,7 +229,7 @@ object SignalJournal {
             if (tp2Hit) return TradeOutcome("TP2_TERCAPAI", bar.closeTime)
             if (tp1Hit) return TradeOutcome("TP1_TERCAPAI", bar.closeTime)
         }
-        return TradeOutcome("BELUM_TERCAPAI", ordered.last().closeTime)
+        return TradeOutcome("BELUM_TERCAPAI", tradeBars.lastOrNull()?.closeTime ?: entryBar.closeTime)
     }
 
     fun pendingTradeOutcomes(context: Context, now: Long = System.currentTimeMillis()): List<SignalRecord> =
