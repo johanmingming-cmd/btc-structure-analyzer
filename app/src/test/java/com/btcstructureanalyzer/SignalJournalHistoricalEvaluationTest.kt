@@ -64,4 +64,12 @@ class SignalJournalHistoricalEvaluationTest {
             .map { it.copy(high = 103.0, low = 98.0) }
         assertEquals("DATA_TIDAK_CUKUP", SignalJournal.evaluateTradeOutcome(signal(), bars).status)
     }
+    @Test
+    fun malformedPartialMinuteCandleIsInsufficientData() {
+        val bars = completeBars().map { b ->
+            if (b.openTime == 5 * 60_000L) b.copy(closeTime = b.openTime + 30_000L) else b
+        }
+        assertEquals("DATA_TIDAK_CUKUP", SignalJournal.evaluateTradeOutcome(signal(), bars).status)
+    }
+
 }
