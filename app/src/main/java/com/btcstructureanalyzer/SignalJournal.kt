@@ -149,9 +149,11 @@ object SignalJournal {
         val updated = read(context).map { r ->
             val current = prices[r.symbol] ?: return@map r
             if (now - r.time >= 15 * 60 * 1000L || r.entryStatus == "TERLEWAT") return@map r
+            // A live ticker outside the entry range cannot prove that historical entry was missed.
+            // Only show the current in-range state here; historical candle evaluation decides TERLEWAT.
             when {
-                current < r.entryLow || current > r.entryHigh -> r.copy(entryStatus = "TERLEWAT")
-                r.entryStatus == "BELUM DICEK" -> r.copy(entryStatus = "MASIH DALAM RANGE")
+                current >= r.entryLow && current <= r.entryHigh && r.entryStatus == "BELUM DICEK" ->
+                    r.copy(entryStatus = "MASIH DALAM RANGE")
                 else -> r
             }
         }
@@ -240,7 +242,8 @@ object SignalJournal {
         val updated = read(context).map { r ->
             if (r.id == signalId && r.tradeOutcome == "PENDING") r.copy(
                 tradeOutcome = outcome.status,
-                tradeOutcomeTime = outcome.eventTime
+                tradeOutcomeTime = outcome.eventTime,
+                entryStatus = if (outcome.status == "ENTRY_TERLEWAT") "TERLEWAT" else r.entryStatus
             ) else r
         }
         write(context, updated)
