@@ -207,17 +207,25 @@ object SignalJournal {
         }.sortedBy { it.openTime }
         if (ordered.isEmpty()) return TradeOutcome("DATA_TIDAK_CUKUP")
 
-        // Entry is verified from historical candle ranges during the signal's first 15 minutes,
-        // not from a later live ticker snapshot.
+        // Only use full 1m candles that start at/after the signal timestamp's next minute.
+        // A candle already open when the signal was generated may contain price action from
+        // before the signal and cannot prove a post-signal entry.
         val entryDeadline = record.time + 15 * 60_000L
-        val entryBar = ordered.firstOrNull { bar ->
-            bar.openTime < entryDeadline && bar.closeTime >= record.time &&
-                bar.low <= record.entryHigh && bar.high >= record.entryLow
-        } ?: return if (ordered.last().closeTime < entryDeadline) {
-            TradeOutcome("DATA_TIDAK_CUKUP")
-        } else {
-            TradeOutcome("ENTRY_TERLEWAT", ordered.lastOrNull { it.closeTime <= entryDeadline }?.closeTime)
+        val firstFullMinute = ((record.time / 60_000L) + 1L) * 60_000L
+        val entryWindowBars = ordered.filter {
+            it.openTime >= firstFullMinute && it.closeTime < entryDeadline
         }
+        // A missed candle means we cannot safely conclude that entry was missed.
+        // Require every expected full minute in the entry window before assigning ENTRY_TERLEWAT.
+        val expectedMinutes = if (firstFullMinute < entryDeadline) {
+            ((entryDeadline - 1L - firstFullMinute) / 60_000L + 1L).toInt()
+        } else 0
+        val entryBarsComplete = entryWindowBars.size == expectedMinutes &&
+            entryWindowBars.zipWithNext().all { (a, b) -> b.openTime - a.openTime == 60_000L }
+        if (!entryBarsComplete) return TradeOutcome("DATA_TIDAK_CUKUP")
+        val entryBar = entryWindowBars.firstOrNull { bar ->
+            bar.low <= record.entryHigh && bar.high >= record.entryLow
+        } ?: return TradeOutcome("ENTRY_TERLEWAT", entryWindowBars.lastOrNull()?.closeTime)
 
         // Do not score TP/SL using the entry candle itself: its high/low may have occurred
         // before entry was reached. Begin with the next completed 1m candle. If SL and TP
