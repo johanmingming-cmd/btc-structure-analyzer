@@ -659,13 +659,13 @@ private fun AnalyzerApp(context: Context) {
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                 Divider(color = Color(0xFF20374B))
-                                Text("15 menit: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "BENAR") Green else if (run.result15m == "SALAH") Red else Muted, fontSize = 11.sp)
-                                Text("30 menit: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "BENAR") Green else if (run.result30m == "SALAH") Red else Muted, fontSize = 11.sp)
-                                Text("1 jam: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "BENAR") Green else if (run.result60m == "SALAH") Red else Muted, fontSize = 11.sp)
+                                Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { Text("Hasil evaluasi mengukur arah perubahan harga dari harga sinyal; bukan bukti transaksi profit dan bukan auto-trading.", color = Muted, fontSize = 10.sp) }
+                    item { Text("Evaluasi 15/30/60 menit menunjukkan arah harga, bukan hasil TP/SL atau bukti profit. Tidak termasuk biaya dan slippage.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
