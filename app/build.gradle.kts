@@ -10,8 +10,8 @@ android {
         applicationId = "com.predictionlab.analyzer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.4.8"
+        versionCode = 14
+        versionName = "1.4.9"
     }
     signingConfigs {
         create("release") {
