@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/prediction-lab-signing
+      - fix/historical-spot-evaluation
 
 permissions:
   contents: read
