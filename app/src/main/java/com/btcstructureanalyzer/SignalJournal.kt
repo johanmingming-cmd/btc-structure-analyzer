@@ -200,6 +200,7 @@ object SignalJournal {
      */
     fun evaluateTradeOutcome(record: SignalRecord, bars: List<HistoricalBar>): TradeOutcome {
         if (record.entryStatus == "TERLEWAT") return TradeOutcome("ENTRY_TERLEWAT")
+        if (record.entryStatus != "MASIH DALAM RANGE") return TradeOutcome("ENTRY_TIDAK_TERVERIFIKASI")
         val ordered = bars.filter {
             it.openTime >= record.time && it.closeTime <= record.time + 60 * 60_000L &&
                 it.high.isFinite() && it.low.isFinite() && it.high > 0.0 && it.low > 0.0 && it.high >= it.low
