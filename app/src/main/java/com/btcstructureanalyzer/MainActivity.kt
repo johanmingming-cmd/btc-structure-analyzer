@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,6 +100,9 @@ private fun AnalyzerApp(context: Context) {
     var results by remember { mutableStateOf<Map<String, StructureResult>>(emptyMap()) }
     var lastRefresh by remember { mutableStateOf<Long?>(null) }
     var autoRefresh by remember { mutableStateOf(context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getBoolean("background_monitoring", false)) }
+    var spotLastScan by remember { mutableLongStateOf(0L) }
+    var spotLastCount by remember { mutableIntStateOf(-1) }
+    var spotLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
@@ -171,6 +175,17 @@ private fun AnalyzerApp(context: Context) {
         }
     }
     LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
+    LaunchedEffect(selected) {
+        if (selected == "Pengaturan") {
+            while (true) {
+                val scanPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                spotLastScan = scanPrefs.getLong("spot_last_scan", 0L)
+                spotLastCount = scanPrefs.getInt("spot_last_count", -1)
+                spotLastError = scanPrefs.getString("spot_last_error", null)
+                delay(2000)
+            }
+        }
+    }
 
     Scaffold(
         containerColor = Navy,
@@ -834,6 +849,26 @@ private fun AnalyzerApp(context: Context) {
                                         context.stopService(android.content.Intent(context, FuturesAutoScanService::class.java))
                                     }
                                 })
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel2), shape = RoundedCornerShape(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("DIAGNOSTIK AUTO-SCAN", color = Blue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(
+                                        if (spotLastScan > 0L) "Scan terakhir berhasil: " + SimpleDateFormat("dd MMM HH:mm:ss", Locale("id", "ID")).format(Date(spotLastScan))
+                                        else "Scan terakhir berhasil: belum tercatat",
+                                        color = Color.White, fontSize = 12.sp
+                                    )
+                                    Text(
+                                        if (spotLastCount >= 0) "Jumlah hasil terakhir: $spotLastCount" else "Jumlah hasil terakhir: belum tercatat",
+                                        color = Color.White, fontSize = 12.sp
+                                    )
+                                    Text(
+                                        if (spotLastError.isNullOrBlank()) "Error terakhir: tidak ada yang tersimpan"
+                                        else "Error terakhir: $spotLastError",
+                                        color = if (spotLastError.isNullOrBlank()) Muted else Red, fontSize = 12.sp
+                                    )
+                                    Text("Status dibaca dari penyimpanan lokal dan diperbarui saat halaman ini terbuka.", color = Muted, fontSize = 10.sp)
+                                }
                             }
                             Divider(color = Color(0xFF24364A))
                             Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
