@@ -186,9 +186,14 @@ object SignalJournal {
     }
 
     private fun classify(r: SignalRecord, current: Double): String {
+        // This horizon label describes price direction only; it is not a TP/SL outcome.
         val move = if (r.direction == "LONG") current - r.price else r.price - current
         val pct = move / r.price * 100.0
-        return when { pct > 0.05 -> "BENAR"; pct < -0.05 -> "SALAH"; else -> "NETRAL" }
+        return when {
+            pct > 0.05 -> "ARAH_POSITIF"
+            pct < -0.05 -> "ARAH_NEGATIF"
+            else -> "ARAH_NETRAL"
+        }
     }
 
     fun fmt(price: Double): String = when {
