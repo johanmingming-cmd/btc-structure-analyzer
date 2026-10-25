@@ -94,6 +94,43 @@ class BinanceRepository {
         null
     }
 
+    /** Fetch completed 1m Spot OHLC bars for conservative historical TP/SL evaluation. */
+    suspend fun historicalSpotBars(symbol: String, startTime: Long, endTime: Long): List<HistoricalBar> = withContext(Dispatchers.IO) {
+        val start = (startTime / 60_000L) * 60_000L
+        val end = (endTime / 60_000L) * 60_000L
+        if (end <= start) return@withContext emptyList()
+        val paths = listOf(
+            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000",
+            "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000",
+            "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000"
+        )
+        var lastError: Exception? = null
+        for (url in paths) {
+            try {
+                val request = Request.Builder().url(url)
+                    .header("User-Agent", "PredictionLab-SpotHistoricalEvaluation/1.0").get().build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) throw IllegalStateException("Spot OHLC HTTP ${response.code}")
+                    val rows = JSONArray(response.body?.string().orEmpty())
+                    return@withContext buildList {
+                        for (i in 0 until rows.length()) {
+                            val row = rows.optJSONArray(i) ?: continue
+                            if (row.length() < 7) continue
+                            val open = row.optLong(0, -1L)
+                            val high = row.optString(2).toDoubleOrNull() ?: continue
+                            val low = row.optString(3).toDoubleOrNull() ?: continue
+                            val closeTime = row.optLong(6, -1L)
+                            if (open >= start && closeTime <= end && high > 0.0 && low > 0.0 && high >= low) {
+                                add(HistoricalBar(open, high, low, closeTime))
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) { lastError = e }
+        }
+        throw IllegalStateException("Gagal mengambil candle historis TP/SL: ${lastError?.message ?: "jaringan tidak tersedia"}", lastError)
+    }
+
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
         require(interval in setOf("5m", "15m", "1h")) { "Timeframe tidak didukung: $interval" }
         // Preserve the original Spot market-data route that was used before the Futures experiment.
