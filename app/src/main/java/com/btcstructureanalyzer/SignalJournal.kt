@@ -217,9 +217,10 @@ object SignalJournal {
             TradeOutcome("ENTRY_TERLEWAT", ordered.lastOrNull { it.closeTime <= entryDeadline }?.closeTime)
         }
 
-        // Evaluate TP/SL from the first candle whose range confirms entry. If SL and TP
-        // are both inside one OHLC candle, order is unknowable, so keep it AMBIGU.
-        val tradeBars = ordered.filter { it.openTime >= entryBar.openTime }
+        // Do not score TP/SL using the entry candle itself: its high/low may have occurred
+        // before entry was reached. Begin with the next completed 1m candle. If SL and TP
+        // are both inside one later OHLC candle, order is unknowable, so keep it AMBIGU.
+        val tradeBars = ordered.filter { it.openTime > entryBar.openTime }
         for (bar in tradeBars) {
             val slHit = if (record.direction == "LONG") bar.low <= record.stopLoss else bar.high >= record.stopLoss
             val tp2Hit = if (record.direction == "LONG") bar.high >= record.takeProfit2 else bar.low <= record.takeProfit2
