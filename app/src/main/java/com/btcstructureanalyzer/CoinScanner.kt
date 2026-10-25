@@ -89,18 +89,11 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             val permits = Semaphore(HISTORICAL_LOOKUP_CONCURRENCY)
             pending.map { item ->
                 async(Dispatchers.IO) {
-                    val key = item.symbol to (item.targetTime / 60_000L)
                     permits.withPermit {
-                        val cached = historicalCache[key]
-                        if (cached != null || historicalCache.containsKey(key)) {
-                            item to cached
-                        } else {
-                            val found = runCatching {
-                                repository.historicalSpotClose(item.symbol, item.targetTime)
-                            }.getOrNull()
-                            synchronized(historicalCache) { historicalCache[key] = found }
-                            item to found
-                        }
+                        val found = runCatching {
+                            repository.historicalSpotClose(item.symbol, item.targetTime)
+                        }.getOrNull()
+                        item to found
                     }
                 }
             }.map { it.await() }
@@ -215,8 +208,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         SignalJournal.recordSignals(context, finalResults)
         finalResults
     }
-
-    private val historicalCache = mutableMapOf<Pair<String, Long>, Pair<Double, Long>?>()
 
     private fun fetchTradableUsdtPerpetualSymbols(): Set<String> {
         // Futures is only a reference list; market data and analysis remain on Binance Spot REST.
