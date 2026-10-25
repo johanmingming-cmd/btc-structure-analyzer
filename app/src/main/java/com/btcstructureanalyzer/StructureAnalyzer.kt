@@ -72,7 +72,8 @@ object StructureAnalyzer {
             val s = clean[j]
             if (s.isHigh) {
                 val prev = previousHigh
-                val tolerance = maxOf(0.5, s.price * 0.00001)
+                // Price-relative tolerance avoids treating large moves as equal on low-priced assets.
+                val tolerance = maxOf(s.price * 0.0005, 1e-8)
                 val label = when {
                     prev == null -> "H"
                     s.price > prev.price + tolerance -> "HH"
@@ -83,7 +84,8 @@ object StructureAnalyzer {
                 previousHigh = s
             } else {
                 val prev = previousLow
-                val tolerance = maxOf(0.5, s.price * 0.00001)
+                // Price-relative tolerance avoids treating large moves as equal on low-priced assets.
+                val tolerance = maxOf(s.price * 0.0005, 1e-8)
                 val label = when {
                     prev == null -> "L"
                     s.price > prev.price + tolerance -> "HL"
