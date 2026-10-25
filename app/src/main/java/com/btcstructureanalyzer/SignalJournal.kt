@@ -222,6 +222,8 @@ object SignalJournal {
     fun evaluateTradeOutcome(record: SignalRecord, bars: List<HistoricalBar>): TradeOutcome {
         val ordered = bars.filter {
             it.openTime >= record.time && it.closeTime <= record.time + 60 * 60_000L &&
+                // Binance 1m klines must represent a complete minute, not a malformed/partial bar.
+                it.closeTime == it.openTime + 59_999L &&
                 it.high.isFinite() && it.low.isFinite() && it.high > 0.0 && it.low > 0.0 && it.high >= it.low
         }.sortedBy { it.openTime }
         if (ordered.isEmpty()) return TradeOutcome("DATA_TIDAK_CUKUP")
