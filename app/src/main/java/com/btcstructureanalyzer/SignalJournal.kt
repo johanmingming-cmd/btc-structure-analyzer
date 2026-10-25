@@ -35,7 +35,9 @@ data class SignalRecord(
     val evaluationTime60m: Long? = null,
     val priceSource15m: String? = null,
     val priceSource30m: String? = null,
-    val priceSource60m: String? = null
+    val priceSource60m: String? = null,
+    val tradeOutcome: String = "PENDING",
+    val tradeOutcomeTime: Long? = null
 )
 
 object SignalJournal {
@@ -69,7 +71,9 @@ object SignalJournal {
                     evaluationTime60m=o.optLong("evaluationTime60m").takeIf { o.has("evaluationTime60m") && !o.isNull("evaluationTime60m") && it > 0L },
                     priceSource15m=o.optString("priceSource15m").takeIf { it.isNotBlank() },
                     priceSource30m=o.optString("priceSource30m").takeIf { it.isNotBlank() },
-                    priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() }
+                    priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() },
+                    tradeOutcome=o.optString("tradeOutcome", "PENDING"),
+                    tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L }
                 ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
             }
         }.getOrDefault(emptyList())
@@ -87,6 +91,7 @@ object SignalJournal {
             o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m); o.put("entryStatus", r.entryStatus)
             o.put("evaluationTime15m", r.evaluationTime15m ?: JSONObject.NULL); o.put("evaluationTime30m", r.evaluationTime30m ?: JSONObject.NULL); o.put("evaluationTime60m", r.evaluationTime60m ?: JSONObject.NULL)
             o.put("priceSource15m", r.priceSource15m ?: JSONObject.NULL); o.put("priceSource30m", r.priceSource30m ?: JSONObject.NULL); o.put("priceSource60m", r.priceSource60m ?: JSONObject.NULL)
+            o.put("tradeOutcome", r.tradeOutcome); o.put("tradeOutcomeTime", r.tradeOutcomeTime ?: JSONObject.NULL)
             array.put(o)
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
@@ -210,6 +215,19 @@ object SignalJournal {
             if (tp1Hit) return TradeOutcome("TP1_TERCAPAI", bar.closeTime)
         }
         return TradeOutcome("BELUM_TERCAPAI", ordered.last().closeTime)
+    }
+
+    fun pendingTradeOutcomes(context: Context, now: Long = System.currentTimeMillis()): List<SignalRecord> =
+        read(context).filter { it.tradeOutcome == "PENDING" && now >= it.time + 60 * 60_000L }
+
+    fun updateTradeOutcome(context: Context, signalId: String, outcome: TradeOutcome) {
+        val updated = read(context).map { r ->
+            if (r.id == signalId && r.tradeOutcome == "PENDING") r.copy(
+                tradeOutcome = outcome.status,
+                tradeOutcomeTime = outcome.eventTime
+            ) else r
+        }
+        write(context, updated)
     }
 
     private fun classify(r: SignalRecord, current: Double): String {
