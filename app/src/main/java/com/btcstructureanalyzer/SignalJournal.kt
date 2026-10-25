@@ -170,7 +170,15 @@ object SignalJournal {
                     30 -> r.price30m
                     else -> r.price60m
                 }
-                if (price == null && now >= target) PendingEvaluation(r.id, r.symbol, horizon, target) else null
+                val evaluatedAt = when (horizon) {
+                    15 -> r.evaluationTime15m
+                    30 -> r.evaluationTime30m
+                    else -> r.evaluationTime60m
+                }
+                // Re-fetch if the saved candle was after the target or too far before it.
+                val needsRecheck = price == null || evaluatedAt == null ||
+                    evaluatedAt > target || target - evaluatedAt > 60_000L
+                if (needsRecheck && now >= target) PendingEvaluation(r.id, r.symbol, horizon, target) else null
             }
         }.sortedBy { it.targetTime }
 
@@ -187,9 +195,12 @@ object SignalJournal {
         val updated = read(context).map { r ->
             if (r.id != signalId) return@map r
             when (horizonMinutes) {
-                15 -> if (r.price15m == null) r.copy(price15m=price, result15m=classify(r, price), evaluationTime15m=candleCloseTime, priceSource15m=source) else r
-                30 -> if (r.price30m == null) r.copy(price30m=price, result30m=classify(r, price), evaluationTime30m=candleCloseTime, priceSource30m=source) else r
-                else -> if (r.price60m == null) r.copy(price60m=price, result60m=classify(r, price), evaluationTime60m=candleCloseTime, priceSource60m=source) else r
+                15 -> if (r.price15m == null || r.evaluationTime15m == null || r.evaluationTime15m > r.time + 15 * 60_000L || r.time + 15 * 60_000L - r.evaluationTime15m > 60_000L)
+                    r.copy(price15m=price, result15m=classify(r, price), evaluationTime15m=candleCloseTime, priceSource15m=source) else r
+                30 -> if (r.price30m == null || r.evaluationTime30m == null || r.evaluationTime30m > r.time + 30 * 60_000L || r.time + 30 * 60_000L - r.evaluationTime30m > 60_000L)
+                    r.copy(price30m=price, result30m=classify(r, price), evaluationTime30m=candleCloseTime, priceSource30m=source) else r
+                else -> if (r.price60m == null || r.evaluationTime60m == null || r.evaluationTime60m > r.time + 60 * 60_000L || r.time + 60 * 60_000L - r.evaluationTime60m > 60_000L)
+                    r.copy(price60m=price, result60m=classify(r, price), evaluationTime60m=candleCloseTime, priceSource60m=source) else r
             }
         }
         write(context, updated)
