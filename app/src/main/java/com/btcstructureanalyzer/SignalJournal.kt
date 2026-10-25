@@ -239,10 +239,8 @@ object SignalJournal {
         val expectedTradeMinutes = if (firstTradeMinute <= lastExpectedTradeMinute) {
             ((lastExpectedTradeMinute - firstTradeMinute) / 60_000L + 1L).toInt()
         } else 0
-        val tradeBarsComplete = tradeBars.size == expectedTradeMinutes &&
-            tradeBars.zipWithNext().all { (a, b) -> b.openTime - a.openTime == 60_000L } &&
-            (tradeBars.isEmpty() || tradeBars.last().openTime == lastExpectedTradeMinute)
-        if (!tradeBarsComplete) return TradeOutcome("DATA_TIDAK_CUKUP")
+        // Check for a decisive TP/SL touch first. A later missing candle must not erase
+        // an outcome already proven by an earlier completed candle.
         for (bar in tradeBars) {
             val slHit = if (record.direction == "LONG") bar.low <= record.stopLoss else bar.high >= record.stopLoss
             val tp2Hit = if (record.direction == "LONG") bar.high >= record.takeProfit2 else bar.low <= record.takeProfit2
@@ -252,15 +250,19 @@ object SignalJournal {
             if (tp2Hit) return TradeOutcome("TP2_TERCAPAI", bar.closeTime)
             if (tp1Hit) return TradeOutcome("TP1_TERCAPAI", bar.closeTime)
         }
+        val tradeBarsComplete = tradeBars.size == expectedTradeMinutes &&
+            tradeBars.zipWithNext().all { (a, b) -> b.openTime - a.openTime == 60_000L } &&
+            (tradeBars.isEmpty() || tradeBars.last().openTime == lastExpectedTradeMinute)
+        if (!tradeBarsComplete) return TradeOutcome("DATA_TIDAK_CUKUP")
         return TradeOutcome("BELUM_TERCAPAI", tradeBars.lastOrNull()?.closeTime ?: entryBar.closeTime)
     }
 
     fun pendingTradeOutcomes(context: Context, now: Long = System.currentTimeMillis()): List<SignalRecord> =
-        read(context).filter { it.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT") && now >= it.time + 60 * 60_000L }
+        read(context).filter { it.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT", "BELUM_TERCAPAI") && now >= it.time + 60 * 60_000L }
 
     fun updateTradeOutcome(context: Context, signalId: String, outcome: TradeOutcome) {
         val updated = read(context).map { r ->
-            if (r.id == signalId && r.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT")) r.copy(
+            if (r.id == signalId && r.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT", "BELUM_TERCAPAI")) r.copy(
                 tradeOutcome = outcome.status,
                 tradeOutcomeTime = outcome.eventTime,
                 entryStatus = if (outcome.status == "ENTRY_TERLEWAT") "TERLEWAT" else r.entryStatus
