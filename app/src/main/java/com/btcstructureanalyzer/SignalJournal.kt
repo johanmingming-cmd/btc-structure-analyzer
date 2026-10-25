@@ -230,7 +230,19 @@ object SignalJournal {
         // Do not score TP/SL using the entry candle itself: its high/low may have occurred
         // before entry was reached. Begin with the next completed 1m candle. If SL and TP
         // are both inside one later OHLC candle, order is unknowable, so keep it AMBIGU.
-        val tradeBars = ordered.filter { it.openTime > entryBar.openTime }
+        val endTime = record.time + 60 * 60_000L
+        val tradeBars = ordered.filter { it.openTime > entryBar.openTime && it.closeTime <= endTime }
+        // Do not call the trade "not reached" unless every expected full 1m candle
+        // after the entry candle through the 60m evaluation deadline is present.
+        val firstTradeMinute = entryBar.openTime + 60_000L
+        val lastExpectedTradeMinute = ((endTime - 60_000L) / 60_000L) * 60_000L
+        val expectedTradeMinutes = if (firstTradeMinute <= lastExpectedTradeMinute) {
+            ((lastExpectedTradeMinute - firstTradeMinute) / 60_000L + 1L).toInt()
+        } else 0
+        val tradeBarsComplete = tradeBars.size == expectedTradeMinutes &&
+            tradeBars.zipWithNext().all { (a, b) -> b.openTime - a.openTime == 60_000L } &&
+            (tradeBars.isEmpty() || tradeBars.last().openTime == lastExpectedTradeMinute)
+        if (!tradeBarsComplete) return TradeOutcome("DATA_TIDAK_CUKUP")
         for (bar in tradeBars) {
             val slHit = if (record.direction == "LONG") bar.low <= record.stopLoss else bar.high >= record.stopLoss
             val tp2Hit = if (record.direction == "LONG") bar.high >= record.takeProfit2 else bar.low <= record.takeProfit2
