@@ -37,7 +37,9 @@ data class SignalRecord(
     val priceSource30m: String? = null,
     val priceSource60m: String? = null,
     val tradeOutcome: String = "PENDING",
-    val tradeOutcomeTime: Long? = null
+    val tradeOutcomeTime: Long? = null,
+    // Existing stored records default to LEGACY; newly captured signals opt into the prospective cohort.
+    val cohort: String = "LEGACY"
 )
 
 object SignalJournal {
@@ -73,7 +75,8 @@ object SignalJournal {
                     priceSource30m=o.optString("priceSource30m").takeIf { it.isNotBlank() },
                     priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() },
                     tradeOutcome=o.optString("tradeOutcome", "PENDING"),
-                    tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L }
+                    tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
+                    cohort=o.optString("cohort", "LEGACY")
                 ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
             }
         }.getOrDefault(emptyList())
@@ -92,6 +95,7 @@ object SignalJournal {
             o.put("evaluationTime15m", r.evaluationTime15m ?: JSONObject.NULL); o.put("evaluationTime30m", r.evaluationTime30m ?: JSONObject.NULL); o.put("evaluationTime60m", r.evaluationTime60m ?: JSONObject.NULL)
             o.put("priceSource15m", r.priceSource15m ?: JSONObject.NULL); o.put("priceSource30m", r.priceSource30m ?: JSONObject.NULL); o.put("priceSource60m", r.priceSource60m ?: JSONObject.NULL)
             o.put("tradeOutcome", r.tradeOutcome); o.put("tradeOutcomeTime", r.tradeOutcomeTime ?: JSONObject.NULL)
+            o.put("cohort", r.cohort)
             array.put(o)
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
@@ -139,7 +143,7 @@ object SignalJournal {
             records = listOf(SignalRecord(
                 id="${coin.symbol}-${direction}-${now}", time=now, symbol=coin.symbol, direction=direction, price=coin.price,
                 entryLow=low, entryHigh=high, stopLoss=stop, takeProfit1=tp1, takeProfit2=tp2,
-                score=coin.score, supports=supports, resistances=resistances
+                score=coin.score, supports=supports, resistances=resistances, cohort="PROSPECTIVE_V1"
             )) + records
         }
         write(context, records)
