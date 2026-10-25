@@ -6,6 +6,9 @@ import org.json.JSONObject
 
 data class PendingEvaluation(val signalId: String, val symbol: String, val horizonMinutes: Int, val targetTime: Long)
 
+data class HistoricalBar(val openTime: Long, val high: Double, val low: Double, val closeTime: Long)
+data class TradeOutcome(val status: String, val eventTime: Long? = null)
+
 data class SignalRecord(
     val id: String,
     val time: Long,
@@ -183,6 +186,30 @@ object SignalJournal {
             }
         }
         write(context, updated)
+    }
+
+    /**
+     * Evaluates hypothetical TP/SL touches from completed historical candles.
+     * If TP and SL are both inside the same candle range, OHLC data cannot prove
+     * which was touched first; mark AMBIGU rather than assuming a favorable order.
+     */
+    fun evaluateTradeOutcome(record: SignalRecord, bars: List<HistoricalBar>): TradeOutcome {
+        if (record.entryStatus == "TERLEWAT") return TradeOutcome("ENTRY_TERLEWAT")
+        val ordered = bars.filter {
+            it.openTime >= record.time && it.closeTime <= record.time + 60 * 60_000L &&
+                it.high.isFinite() && it.low.isFinite() && it.high > 0.0 && it.low > 0.0 && it.high >= it.low
+        }.sortedBy { it.openTime }
+        if (ordered.isEmpty()) return TradeOutcome("DATA_TIDAK_CUKUP")
+        for (bar in ordered) {
+            val slHit = if (record.direction == "LONG") bar.low <= record.stopLoss else bar.high >= record.stopLoss
+            val tp2Hit = if (record.direction == "LONG") bar.high >= record.takeProfit2 else bar.low <= record.takeProfit2
+            val tp1Hit = if (record.direction == "LONG") bar.high >= record.takeProfit1 else bar.low <= record.takeProfit1
+            if (slHit && (tp1Hit || tp2Hit)) return TradeOutcome("AMBIGU", bar.closeTime)
+            if (slHit) return TradeOutcome("SL_TERSENTUH", bar.closeTime)
+            if (tp2Hit) return TradeOutcome("TP2_TERCAPAI", bar.closeTime)
+            if (tp1Hit) return TradeOutcome("TP1_TERCAPAI", bar.closeTime)
+        }
+        return TradeOutcome("BELUM_TERCAPAI", ordered.last().closeTime)
     }
 
     private fun classify(r: SignalRecord, current: Double): String {
