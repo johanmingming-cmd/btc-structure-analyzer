@@ -32,10 +32,10 @@ object SignalExport {
     )
 
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
-        appendLine("signal_id,signal_time_utc,symbol,direction,signal_price,score,entry_low,entry_high,stop_loss,take_profit_1,take_profit_2,supports,resistances,entry_status,result_15m,result_30m,result_60m")
+        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,entry_low,entry_high,stop_loss,take_profit_1,take_profit_2,supports,resistances,entry_status,result_15m,result_30m,result_60m")
         records.forEach { r ->
             appendLine(listOf(
-                csv(r.id), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(),
+                csv(r.id), csv(r.cohort), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(),
                 num(r.entryLow), num(r.entryHigh), num(r.stopLoss), num(r.takeProfit1), num(r.takeProfit2),
                 csv(r.supports.joinToString("|") { it.toString() }),
                 csv(r.resistances.joinToString("|") { it.toString() }),
@@ -45,7 +45,7 @@ object SignalExport {
     }
 
     private fun evaluationsCsv(records: List<SignalRecord>): String = buildString {
-        appendLine("signal_id,symbol,direction,target_horizon_minutes,signal_time_utc,target_time_utc,evaluation_time_utc,signal_price,evaluation_price,price_change,evaluation_price_change_pct,direction_favorable_change_pct,raw_result,direction_correct,price_source,delay_seconds,data_quality")
+        appendLine("signal_id,cohort,symbol,direction,target_horizon_minutes,signal_time_utc,target_time_utc,evaluation_time_utc,signal_price,evaluation_price,price_change,evaluation_price_change_pct,direction_favorable_change_pct,raw_result,direction_correct,price_source,delay_seconds,data_quality")
         records.forEach { r ->
             horizons(r).forEach { h ->
                 val delta = h.price?.minus(r.price)
@@ -61,7 +61,7 @@ object SignalExport {
                     else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
                 }
                 appendLine(listOf(
-                    csv(r.id), csv(r.symbol), csv(r.direction), h.minutes.toString(),
+                    csv(r.id), csv(r.cohort), csv(r.symbol), csv(r.direction), h.minutes.toString(),
                     csv(isoUtc(r.time)), csv(isoUtc(r.time + h.minutes * 60_000L)), h.evaluationTime?.let { csv(isoUtc(it)) } ?: "",
                     num(r.price), h.price?.let(::num) ?: "", delta?.let(::num) ?: "", pct?.let(::num) ?: "",
                     favorable?.let(::num) ?: "", csv(h.result), directionCorrect, csv(h.priceSource ?: "UNKNOWN_NOT_STORED"),
@@ -108,6 +108,7 @@ object SignalExport {
             }
             signals.put(JSONObject()
                 .put("signal_id", r.id)
+                .put("cohort", r.cohort)
                 .put("signal_time_epoch_ms", r.time)
                 .put("signal_time_utc", isoUtc(r.time))
                 .put("symbol", r.symbol)
@@ -144,6 +145,7 @@ BTC STRUCTURE ANALYZER - EXPORT DATA
 Schema version: 1.0
 Export time (UTC): ${isoUtc(exportedAt)}
 Exported signal count: $count
+Cohort metadata: LEGACY records predate prospective cohort tracking; PROSPECTIVE_V1 records were captured after prospective tracking was added. Filter by cohort for new-sample analysis.
 
 FILES
 - signals.csv: one row per stored signal.
