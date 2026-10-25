@@ -79,12 +79,13 @@ class BinanceRepository {
                             if (row.length() < 7) continue
                             val close = row.optString(4).toDoubleOrNull() ?: continue
                             val closeTime = row.optLong(6, -1L)
-                            // Accept only completed candle closes within 90 seconds of the target.
-                            if (close > 0.0 && closeTime >= targetTime - 30_000L &&
-                                closeTime <= targetTime + 90_000L) add(close to closeTime)
+                            // Never score a horizon using a candle that closed after its target.
+                            // Use the latest completed close at/before target, only if it is recent enough.
+                            if (close > 0.0 && closeTime <= targetTime &&
+                                closeTime >= targetTime - 60_000L) add(close to closeTime)
                         }
                     }
-                    return@withContext candidates.minByOrNull { kotlin.math.abs(it.second - targetTime) }
+                    return@withContext candidates.maxByOrNull { it.second }
                 }
             } catch (e: Exception) {
                 lastError = e
