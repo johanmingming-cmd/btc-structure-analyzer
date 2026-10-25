@@ -99,10 +99,14 @@ object SignalJournal {
 
     fun recordSignals(context: Context, coins: List<ScannedCoin>, now: Long = System.currentTimeMillis()) {
         var records = read(context)
-        val latestBySymbol = records.filter { now - it.time in 0..15*60*1000L }.associateBy { it.symbol to it.direction }
+        val recentKeys = records
+            .filter { now - it.time in 0..15*60*1000L }
+            .map { it.symbol to it.direction }
+            .toMutableSet()
         coins.forEach { coin ->
             val direction = if (coin.trend1h == Trend.BULLISH && coin.trend15m == Trend.BULLISH) "LONG" else "SHORT"
-            if (latestBySymbol[coin.symbol to direction] != null) return@forEach
+            // Deduplicate against saved records and against earlier candidates in this same scan.
+            if (!recentKeys.add(coin.symbol to direction)) return@forEach
             val pad = coin.price * 0.00025
             val low = coin.price - pad
             val high = coin.price + pad
