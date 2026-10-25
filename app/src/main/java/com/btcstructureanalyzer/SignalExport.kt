@@ -31,6 +31,17 @@ object SignalExport {
         Horizon(60, r.price60m, r.result60m, r.evaluationTime60m, r.priceSource60m)
     )
 
+    /** Quality is cohort-aware so legacy records cannot be mistaken for prospective samples. */
+    private fun dataQuality(r: SignalRecord, h: Horizon): String = when {
+        !r.cohort.equals("PROSPECTIVE_V1", ignoreCase = true) -> "LEGACY_COHORT_NOT_PROSPECTIVE"
+        h.price == null -> "EVALUATION_PRICE_MISSING"
+        h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
+        h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
+        h.priceSource != "BINANCE_SPOT_1M_CANDLE_CLOSE" -> "LEGACY_NON_HISTORICAL_EVALUATION"
+        kotlin.math.abs(h.evaluationTime - (r.time + h.minutes * 60_000L)) > 90_000L -> "EVALUATION_OUTSIDE_TARGET_WINDOW"
+        else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
+    }
+
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
         appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,entry_low,entry_high,stop_loss,take_profit_1,take_profit_2,supports,resistances,entry_status,result_15m,result_30m,result_60m")
         records.forEach { r ->
@@ -52,14 +63,7 @@ object SignalExport {
                 val pct = if (h.price != null && r.price > 0.0) ((h.price - r.price) / r.price) * 100.0 else null
                 val favorable = pct?.let { if (r.direction.equals("LONG", true)) it else -it }
                 val directionCorrect = favorable?.let { when { it > 0.05 -> "true"; it < -0.05 -> "false"; else -> "null" } } ?: "null"
-                val quality = when {
-                    h.price == null -> "EVALUATION_PRICE_MISSING"
-                    h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
-                    h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
-                    h.priceSource != "BINANCE_SPOT_1M_CANDLE_CLOSE" -> "LEGACY_NON_HISTORICAL_EVALUATION"
-                    kotlin.math.abs(h.evaluationTime - (r.time + h.minutes * 60_000L)) > 90_000L -> "EVALUATION_OUTSIDE_TARGET_WINDOW"
-                    else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
-                }
+                val quality = dataQuality(r, h)
                 appendLine(listOf(
                     csv(r.id), csv(r.cohort), csv(r.symbol), csv(r.direction), h.minutes.toString(),
                     csv(isoUtc(r.time)), csv(isoUtc(r.time + h.minutes * 60_000L)), h.evaluationTime?.let { csv(isoUtc(it)) } ?: "",
@@ -96,14 +100,7 @@ object SignalExport {
                     })
                     .put("price_source", h.priceSource ?: "UNKNOWN_NOT_STORED")
                     .put("delay_seconds", h.evaluationTime?.let { (it - (r.time + h.minutes * 60_000L)) / 1000L } ?: JSONObject.NULL)
-                    .put("data_quality", when {
-                        h.price == null -> "EVALUATION_PRICE_MISSING"
-                        h.evaluationTime == null -> "PRICE_PRESENT_EVALUATION_TIME_NOT_STORED"
-                        h.priceSource.isNullOrBlank() -> "PRICE_PRESENT_SOURCE_NOT_STORED"
-                        h.priceSource != "BINANCE_SPOT_1M_CANDLE_CLOSE" -> "LEGACY_NON_HISTORICAL_EVALUATION"
-                        kotlin.math.abs(h.evaluationTime - (r.time + h.minutes * 60_000L)) > 90_000L -> "EVALUATION_OUTSIDE_TARGET_WINDOW"
-                        else -> "HISTORICAL_CANDLE_WITHIN_TARGET_WINDOW"
-                    })
+                    .put("data_quality", dataQuality(r, h))
                 evaluations.put(evaluation)
             }
             signals.put(JSONObject()
@@ -131,6 +128,7 @@ object SignalExport {
             .put("record_count", records.size)
             .put("export_mode", "READ_ONLY_LOCAL_SIGNAL_JOURNAL")
             .put("limitations", JSONArray(listOf(
+                "Legacy cohort records are marked LEGACY_COHORT_NOT_PROSPECTIVE and must be excluded from prospective accuracy summaries.",
                 "Legacy records may not store the exact evaluation timestamp or price source.",
                 "New evaluations use the nearest completed Binance Spot 1m candle close around the target time. The stored evaluation timestamp is the candle close timestamp; quality is marked outside the target window when it differs by more than 90 seconds.",
                 "target_time_utc is calculated from signal time and horizon; it is not the actual evaluation time.",
@@ -162,7 +160,7 @@ signal_time_utc is the stored signal creation time.
 target_time_utc is calculated as signal time + 15/30/60 minutes.
 evaluation_time_utc is the timestamp of the historical 1m candle close used for evaluation.
 Legacy records may lack evaluation timestamps or source metadata; new records store both.
-data_quality identifies missing metadata and evaluations outside the +/-90 second target window.
+data_quality first excludes LEGACY records from prospective analysis, then identifies missing metadata and evaluations outside the +/-90 second target window.
 All timestamps included here are UTC.
 
 EVALUATION FIELDS
