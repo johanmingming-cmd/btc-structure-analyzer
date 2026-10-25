@@ -133,6 +133,7 @@ private fun AnalyzerApp(context: Context) {
     var scanDiagnostics by remember { mutableStateOf<ScanDiagnostics?>(null) }
     var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
     var scanCompleted by remember { mutableStateOf(false) }
+    var scanCompletedAt by remember { mutableStateOf<Long?>(null) }
 
     fun loadHistory() {
         val raw = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getString("history", "") ?: ""
@@ -529,7 +530,7 @@ private fun AnalyzerApp(context: Context) {
                                         val scanner = CoinScanner(repo, context)
                                          try { scannedCoins = scanner.scan(15) }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
@@ -545,6 +546,7 @@ private fun AnalyzerApp(context: Context) {
                                     ) {
                                         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                             Text("DIAGNOSTIK PEMINDAIAN", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                            Text(scanCompletedAt?.let { "SCAN TERAKHIR " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: "BELUM ADA HASIL SCAN DI SESI INI", color = Green, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             Text("Pasangan Spot: ${d.spotPairs} • Daftar Futures: ${d.futuresWhitelist}", color = Muted, fontSize = 11.sp)
                                             Text("Lolos volume/spread/perubahan: ${d.liquidCandidates}", color = Muted, fontSize = 11.sp)
                                             Text("Candle berhasil diperiksa: ${d.candlesChecked} • Tren searah: ${d.trendConfirmed}", color = Muted, fontSize = 11.sp)
