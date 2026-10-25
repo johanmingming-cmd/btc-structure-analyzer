@@ -193,7 +193,9 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     Trend.SIDEWAYS -> fifteenMinuteSideways++
                     Trend.UNCONFIRMED -> fifteenMinuteUnconfirmed++
                 }
-                candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} • 15M: ${r15.trend.name}")
+                val swings1h = r1h.swings.takeLast(4).joinToString("/") { it.label }
+                val swings15m = r15.swings.takeLast(4).joinToString("/") { it.label }
+                candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} [$swings1h] • 15M: ${r15.trend.name} [$swings15m]")
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
                 when {
