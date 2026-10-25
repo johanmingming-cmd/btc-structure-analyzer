@@ -85,6 +85,12 @@ private fun AnalyzerApp(context: Context) {
                 .getString("spot_notification_details", null)
         )
     }
+    var notificationTime by remember {
+        mutableStateOf(
+            context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                .getLong("spot_notification_time", 0L)
+        )
+    }
     var timeframe by remember { mutableStateOf("5m") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -347,6 +353,21 @@ private fun AnalyzerApp(context: Context) {
                                         Text("SINYAL SPOT DARI NOTIFIKASI", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
                                     }
                                     Text(detectedLine, color = Muted, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    if (notificationTime > 0L) {
+                                        val ageMinutes = ((System.currentTimeMillis() - notificationTime) / 60_000L).coerceAtLeast(0L)
+                                        val ageLabel = when {
+                                            ageMinutes < 60L -> "$ageMinutes menit"
+                                            ageMinutes < 24L * 60L -> "${ageMinutes / 60L} jam ${ageMinutes % 60L} menit"
+                                            else -> "${ageMinutes / (24L * 60L)} hari ${(ageMinutes % (24L * 60L)) / 60L} jam"
+                                        }
+                                        val stale = ageMinutes >= 60L
+                                        Text(
+                                            if (stale) "STATUS: SINYAL LAMA • umur $ageLabel" else "STATUS: SINYAL TERBARU • umur $ageLabel",
+                                            color = if (stale) Amber else Green,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 13.sp
+                                        )
+                                    }
                                     signalLines.forEach { line ->
                                         val bullish = line.contains("BULLISH")
                                         val directionColor = if (bullish) Green else Red
