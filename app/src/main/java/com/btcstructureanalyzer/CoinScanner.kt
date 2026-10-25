@@ -37,6 +37,7 @@ data class ScanDiagnostics(
     val bearishTrendPairs: Int = 0,
     val unalignedTrendPairs: Int = 0,
     val momentumRejected: Int = 0,
+    val nearbyLevelRejected: Int = 0,
     val oneHourBullish: Int = 0,
     val oneHourBearish: Int = 0,
     val oneHourSideways: Int = 0,
@@ -131,6 +132,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var bearishTrendPairs = 0
         var unalignedTrendPairs = 0
         var momentumRejected = 0
+        var nearbyLevelRejected = 0
         var oneHourBullish = 0
         var oneHourBearish = 0
         var oneHourSideways = 0
@@ -239,6 +241,20 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     .sorted()
                     .take(3)
                     .toList()
+                // Avoid publishing a signal when the nearest opposing 15m swing level
+                // falls inside the proposed entry band.
+                val entryPad = lastPrice * 0.00025
+                val entryLow = lastPrice - entryPad
+                val entryHigh = lastPrice + entryPad
+                val opposingLevelInsideEntry = if (sameBullish) {
+                    resistances.firstOrNull()?.let { it <= entryHigh } == true
+                } else {
+                    supports.firstOrNull()?.let { it >= entryLow } == true
+                }
+                if (opposingLevelInsideEntry) {
+                    nearbyLevelRejected++
+                    continue
+                }
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason, supports, resistances))
             } catch (_: Exception) {
                 dataErrors++
@@ -256,6 +272,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             bearishTrendPairs = bearishTrendPairs,
             unalignedTrendPairs = unalignedTrendPairs,
             momentumRejected = momentumRejected,
+            nearbyLevelRejected = nearbyLevelRejected,
             oneHourBullish = oneHourBullish,
             oneHourBearish = oneHourBearish,
             oneHourSideways = oneHourSideways,
