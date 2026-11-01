@@ -585,13 +585,6 @@ private fun AnalyzerApp(context: Context) {
                                     Divider(color = Color(0xFF20374B))
                                     val isLong = coin.trend1h == Trend.BULLISH && coin.trend15m == Trend.BULLISH
                                     val direction = if (isLong) "LONG" else "SHORT"
-                                    val entryLow = coin.price - pad
-                                    val entryHigh = coin.price + pad
-                                    val stop = if (isLong) (coin.supportLevels.firstOrNull()?.takeIf { it < entryLow } ?: coin.price * 0.996)
-                                        else (coin.resistanceLevels.firstOrNull()?.takeIf { it > entryHigh } ?: coin.price * 1.004)
-                                    val target1 = if (isLong) (coin.resistanceLevels.firstOrNull { it > entryHigh } ?: coin.price * 1.005)
-                                        else (coin.supportLevels.firstOrNull() ?: coin.price * 0.995)
-                                    val target2 = if (isLong) maxOf(coin.price * 1.008, target1 * 1.001) else minOf(coin.price * 0.992, target1 * 0.999)
                                     Column(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
