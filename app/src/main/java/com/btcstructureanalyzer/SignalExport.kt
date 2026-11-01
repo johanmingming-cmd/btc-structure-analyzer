@@ -26,6 +26,7 @@ object SignalExport {
     }
 
     private fun horizons(r: SignalRecord) = listOf(
+        Horizon(10, r.price10m, r.result10m, r.evaluationTime10m, r.priceSource10m),
         Horizon(15, r.price15m, r.result15m, r.evaluationTime15m, r.priceSource15m),
         Horizon(30, r.price30m, r.result30m, r.evaluationTime30m, r.priceSource30m),
         Horizon(60, r.price60m, r.result60m, r.evaluationTime60m, r.priceSource60m)
@@ -43,14 +44,13 @@ object SignalExport {
     }
 
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
-        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,entry_low,entry_high,stop_loss,take_profit_1,take_profit_2,supports,resistances,entry_status,result_15m,result_30m,result_60m")
+        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,supports,resistances,result_10m,result_15m,result_30m,result_60m")
         records.forEach { r ->
             appendLine(listOf(
                 csv(r.id), csv(r.cohort), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(),
-                num(r.entryLow), num(r.entryHigh), num(r.stopLoss), num(r.takeProfit1), num(r.takeProfit2),
                 csv(r.supports.joinToString("|") { it.toString() }),
                 csv(r.resistances.joinToString("|") { it.toString() }),
-                csv(r.entryStatus), csv(r.result15m), csv(r.result30m), csv(r.result60m)
+                csv(r.result10m), csv(r.result15m), csv(r.result30m), csv(r.result60m)
             ).joinToString(","))
         }
     }
@@ -112,11 +112,7 @@ object SignalExport {
                 .put("direction", r.direction)
                 .put("signal_price", r.price)
                 .put("score", r.score)
-                .put("entry", JSONObject().put("low", r.entryLow).put("high", r.entryHigh).put("status", r.entryStatus))
-                .put("stop_loss", r.stopLoss)
-                .put("take_profit_1", r.takeProfit1)
-                .put("take_profit_2", r.takeProfit2)
-                .put("supports", JSONArray(r.supports))
+                 .put("supports", JSONArray(r.supports))
                 .put("resistances", JSONArray(r.resistances))
                 .put("evaluations", evaluations))
         }
@@ -147,7 +143,7 @@ Cohort metadata: LEGACY records predate prospective cohort tracking; PROSPECTIVE
 
 FILES
 - signals.csv: one row per stored signal.
-- evaluations.csv: one row per signal and horizon (15, 30, 60 minutes).
+- evaluations.csv: one row per signal and horizon (10, 15, 30, 60 minutes).
 - signal-analysis.json: structured archive including limitations and derived fields.
 - README.txt: this documentation.
 
@@ -157,7 +153,7 @@ The ZIP contains no API keys or credentials.
 
 TIME FIELDS
 signal_time_utc is the stored signal creation time.
-target_time_utc is calculated as signal time + 15/30/60 minutes.
+target_time_utc is calculated as signal time + 10/15/30/60 minutes.
 evaluation_time_utc is the timestamp of the historical 1m candle close used for evaluation.
 Legacy records may lack evaluation timestamps or source metadata; new records store both.
 data_quality first excludes LEGACY records from prospective analysis, then identifies missing metadata and evaluations outside the +/-90 second target window.
