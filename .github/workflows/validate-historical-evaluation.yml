@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/historical-spot-evaluation
+      - feature/stage1-evaluation-10m-ui-cleanup
   workflow_dispatch:
 
 permissions:
