@@ -658,7 +658,7 @@ private fun AnalyzerApp(context: Context) {
                                         }
                                         signalHistory = SignalJournal.read(context)
                                         historyRefreshMessage = if (dueEvaluations.isEmpty()) {
-                                            "Tidak ada evaluasi yang menunggu. Riwayat sudah diperiksa."
+                                            "Belum ada evaluasi yang jatuh tempo untuk diproses. Evaluasi berikutnya akan berjalan setelah waktunya tercapai."
                                         } else {
                                             "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • ${SignalJournal.pendingEvaluations(context).size} masih menunggu."
                                         }
