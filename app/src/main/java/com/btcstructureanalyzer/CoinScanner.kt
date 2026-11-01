@@ -84,7 +84,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 tickerError
             )
         }
-        }
         // Historical direction evaluations use completed Spot 1m candles only.
         // Failed or unavailable items remain pending and are retried on the next scan.
         val pending = SignalJournal.pendingEvaluations(context).take(MAX_HISTORICAL_EVALUATIONS_PER_SCAN)
