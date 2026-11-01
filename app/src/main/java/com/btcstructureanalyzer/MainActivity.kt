@@ -623,16 +623,35 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshError = null
                                     try {
                                         val dueEvaluations = SignalJournal.pendingEvaluations(context)
+                                        var evaluationFailures = 0
+                                        var lastEvaluationError: String? = null
                                         for (pending in dueEvaluations) {
                                             try {
                                                 val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                if (historical != null) SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
-                                            } catch (_: Exception) {
+                                                if (historical != null) {
+                                                    SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
+                                                } else {
+                                                    evaluationFailures++
+                                                    lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                                }
+                                            } catch (e: Exception) {
+                                                evaluationFailures++
+                                                lastEvaluationError = e.message ?: "Gagal mengambil candle historis"
                                                 // Leave this horizon pending so the next refresh/auto scan can retry.
                                             }
                                         }
                                         val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
-                                        evalPrefs.edit().putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size).putInt("history_eval_last_attempted", dueEvaluations.size).putLong("history_eval_last_scan", System.currentTimeMillis()).apply()
+                                        evalPrefs.edit()
+                                            .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
+                                            .putInt("history_eval_last_attempted", dueEvaluations.size)
+                                            .putInt("history_eval_last_failed", evaluationFailures)
+                                            .putLong("history_eval_last_scan", System.currentTimeMillis())
+                                            .apply()
+                                        if (lastEvaluationError != null) {
+                                            evalPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
+                                        } else if (dueEvaluations.isNotEmpty()) {
+                                            evalPrefs.edit().remove("history_eval_last_error").apply()
+                                        }
                                         signalHistory = SignalJournal.read(context)
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
@@ -669,10 +688,10 @@ private fun AnalyzerApp(context: Context) {
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                 Divider(color = Color(0xFF20374B))
-                                Text("10 menit • arah harga: ${run.result10m} ${run.price10m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result10m == "ARAH_POSITIF") Green else if (run.result10m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
-                                Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
-                                Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
-                                Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("10 menit • arah harga: ${run.result10m} ${run.price10m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime10m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result10m == "ARAH_POSITIF") Green else if (run.result10m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime15m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime30m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime60m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
