@@ -107,6 +107,7 @@ private fun AnalyzerApp(context: Context) {
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
     var historyRefreshError by remember { mutableStateOf<String?>(null) }
+    var historyRefreshMessage by remember { mutableStateOf<String?>(null) }
     var exportLoading by remember { mutableStateOf(false) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
     var exportError by remember { mutableStateOf<String?>(null) }
@@ -621,15 +622,18 @@ private fun AnalyzerApp(context: Context) {
                                 scope.launch {
                                     historyRefreshLoading = true
                                     historyRefreshError = null
+                                    historyRefreshMessage = null
                                     try {
                                         val dueEvaluations = SignalJournal.pendingEvaluations(context)
                                         var evaluationFailures = 0
+                                        var evaluationUpdated = 0
                                         var lastEvaluationError: String? = null
                                         for (pending in dueEvaluations) {
                                             try {
                                                 val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
                                                 if (historical != null) {
                                                     SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
+                                                    evaluationUpdated++
                                                 } else {
                                                     evaluationFailures++
                                                     lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
@@ -653,6 +657,11 @@ private fun AnalyzerApp(context: Context) {
                                             evalPrefs.edit().remove("history_eval_last_error").apply()
                                         }
                                         signalHistory = SignalJournal.read(context)
+                                        historyRefreshMessage = if (dueEvaluations.isEmpty()) {
+                                            "Tidak ada evaluasi yang menunggu. Riwayat sudah diperiksa."
+                                        } else {
+                                            "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • ${SignalJournal.pendingEvaluations(context).size} masih menunggu."
+                                        }
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
                                         signalHistory = SignalJournal.read(context)
@@ -666,6 +675,7 @@ private fun AnalyzerApp(context: Context) {
                         ) {
                             Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
                         }
+                        historyRefreshMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = { exportLauncher.launch("btc-structure-analysis.zip") },
