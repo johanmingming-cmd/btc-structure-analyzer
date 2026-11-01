@@ -629,39 +629,17 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshLoading = true
                                     historyRefreshError = null
                                     try {
-                                        val currentRecords = SignalJournal.read(context)
-                                        val symbols = currentRecords.map { it.symbol }.toSet()
-                                        if (symbols.isNotEmpty()) {
-                                            val latestPrices = repo.latestPrices(symbols)
-                                            SignalJournal.updatePrices(context, latestPrices)
-                                        }
-                                        // Resolve due 15/30/60-minute horizons from historical 1m Spot candles,
-                                        // never from the current live ticker. Keep individual failures retryable.
                                         val dueEvaluations = SignalJournal.pendingEvaluations(context)
                                         for (pending in dueEvaluations) {
-                                            runCatching {
+                                            try {
                                                 val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                if (historical != null) {
-                                                    SignalJournal.updateHistoricalEvaluation(
-                                                        context,
-                                                        pending.signalId,
-                                                        pending.horizonMinutes,
-                                                        historical.first,
-                                                        historical.second
-                                                    )
-                                                }
+                                                if (historical != null) SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
+                                            } catch (_: Exception) {
+                                                // Leave this horizon pending so the next refresh/auto scan can retry.
                                             }
                                         }
-                                        // Evaluate TP/SL separately from directional 15/30/60m results.
-                                        // Only signals with a verified entry are scored as hypothetical trades.
-                                        val dueTradeOutcomes = SignalJournal.pendingTradeOutcomes(context)
-                                        for (record in dueTradeOutcomes) {
-                                            runCatching {
-                                                val bars = repo.historicalSpotBars(record.symbol, record.time, record.time + 60 * 60_000L)
-                                                val outcome = SignalJournal.evaluateTradeOutcome(record, bars)
-                                                SignalJournal.updateTradeOutcome(context, record.id, outcome)
-                                            }
-                                        }
+                                        val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                                        evalPrefs.edit().putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size).putInt("history_eval_last_attempted", dueEvaluations.size).putLong("history_eval_last_scan", System.currentTimeMillis()).apply()
                                         signalHistory = SignalJournal.read(context)
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
