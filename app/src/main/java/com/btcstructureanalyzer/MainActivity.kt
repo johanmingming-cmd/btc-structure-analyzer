@@ -208,7 +208,7 @@ private fun AnalyzerApp(context: Context) {
             }
         },
         topBar = {
-            Column(Modifier.fillMaxWidth().background(Navy)) {
+            Column(Modifier.fillMaxWidth().background(Navy).statusBarsPadding()) {
                 Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -237,7 +237,7 @@ private fun AnalyzerApp(context: Context) {
         }
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).background(Navy),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 22.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when (selected) {
                 "Home" -> {
@@ -585,7 +585,6 @@ private fun AnalyzerApp(context: Context) {
                                     Divider(color = Color(0xFF20374B))
                                     val isLong = coin.trend1h == Trend.BULLISH && coin.trend15m == Trend.BULLISH
                                     val direction = if (isLong) "LONG" else "SHORT"
-                                    val pad = coin.price * 0.00025
                                     val entryLow = coin.price - pad
                                     val entryHigh = coin.price + pad
                                     val stop = if (isLong) (coin.supportLevels.firstOrNull()?.takeIf { it < entryLow } ?: coin.price * 0.996)
@@ -606,8 +605,6 @@ private fun AnalyzerApp(context: Context) {
                                                 Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
                                             }
                                         }
-                                        Text("Area entry: ${SignalJournal.fmt(entryLow)} – ${SignalJournal.fmt(entryHigh)}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                        Text("SL: ${SignalJournal.fmt(stop)}  •  TP1: ${SignalJournal.fmt(target1)}  •  TP2: ${SignalJournal.fmt(target2)}", color = Muted, fontSize = 10.sp)
                                         Text("SNR • S1: ${coin.supportLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  S2: ${coin.supportLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  S3: ${coin.supportLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                         Text("R1: ${coin.resistanceLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  R2: ${coin.resistanceLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  R3: ${coin.resistanceLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                     }
@@ -698,20 +695,17 @@ private fun AnalyzerApp(context: Context) {
                                 Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
                                 Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                                 Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
-                                Text("Area entry: ${SignalJournal.fmt(run.entryLow)} – ${SignalJournal.fmt(run.entryHigh)}", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                Text("Status entry: ${run.entryStatus}", color = if (run.entryStatus == "TERLEWAT") Red else if (run.entryStatus == "MASIH DALAM RANGE") Green else Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                Text("SL ${SignalJournal.fmt(run.stopLoss)} • TP1 ${SignalJournal.fmt(run.takeProfit1)} • TP2 ${SignalJournal.fmt(run.takeProfit2)}", color = Muted, fontSize = 11.sp)
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                 Divider(color = Color(0xFF20374B))
+                                Text("10 menit • arah harga: ${run.result10m} ${run.price10m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result10m == "ARAH_POSITIF") Green else if (run.result10m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
-                                Text("Hasil TP/SL historis: ${run.tradeOutcome}", color = when (run.tradeOutcome) { "TP1_TERCAPAI", "TP2_TERCAPAI" -> Green; "SL_TERSENTUH", "ENTRY_TERLEWAT" -> Red; else -> Muted }, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { Text("Evaluasi 15/30/60 menit menunjukkan arah harga, bukan hasil TP/SL atau bukti profit. Tidak termasuk biaya dan slippage.", color = Muted, fontSize = 10.sp) }
+                    item { Text("Evaluasi 10/15/30/60 menit menunjukkan arah harga, bukan hasil TP/SL atau bukti profit. Tidak termasuk biaya dan slippage.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
