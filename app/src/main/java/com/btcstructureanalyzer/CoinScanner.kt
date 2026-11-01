@@ -84,44 +84,43 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 tickerError
             )
         }
-        val currentPrices = buildMap {
-            for (i in 0 until tickers.length()) {
-                val row = tickers.optJSONObject(i) ?: continue
-                val symbol = row.optString("symbol")
-                val current = row.optString("lastPrice").toDoubleOrNull() ?: continue
-                if (symbol.endsWith("USDT") && current > 0.0) put(symbol, current)
-            }
-        }
-        // Live ticker is only for entry status. Historical evaluation uses completed Spot 1m candles.
-        SignalJournal.updatePrices(context, currentPrices)
-
-        // Fetch a small bounded batch with limited concurrency so historical lookups do not
-        // block the scan for many serial network timeouts. Apply journal writes sequentially
-        // afterward because the journal is stored as one SharedPreferences JSON array.
+        // Historical direction evaluations use completed Spot 1m candles only.
+        // Failed or unavailable items remain pending and are retried on the next scan.
         val pending = SignalJournal.pendingEvaluations(context).take(MAX_HISTORICAL_EVALUATIONS_PER_SCAN)
         val historicalResults = coroutineScope {
             val permits = Semaphore(HISTORICAL_LOOKUP_CONCURRENCY)
             pending.map { item ->
                 async(Dispatchers.IO) {
                     permits.withPermit {
-                        val found = runCatching {
-                            repository.historicalSpotClose(item.symbol, item.targetTime)
-                        }.getOrNull()
-                        item to found
+                        item to runCatching { repository.historicalSpotClose(item.symbol, item.targetTime) }
                     }
                 }
             }.map { it.await() }
         }
-        historicalResults.forEach { (item, historical) ->
-            if (historical != null) {
-                SignalJournal.updateHistoricalEvaluation(
-                    context = context,
-                    signalId = item.signalId,
-                    horizonMinutes = item.horizonMinutes,
-                    price = historical.first,
-                    candleCloseTime = historical.second
+        var evaluationFailures = 0
+        var lastEvaluationError: String? = null
+        historicalResults.forEach { (item, result) ->
+            result.getOrNull()?.let { historical ->
+                if (historical != null) SignalJournal.updateHistoricalEvaluation(
+                    context, item.signalId, item.horizonMinutes, historical.first, historical.second
                 )
             }
+            result.exceptionOrNull()?.let { error ->
+                evaluationFailures++
+                lastEvaluationError = "${item.symbol} ${item.horizonMinutes}m: ${error.message ?: error.javaClass.simpleName}"
+            }
+        }
+        val evaluationPrefs = context.getSharedPreferences("btc_structure", android.content.Context.MODE_PRIVATE)
+        evaluationPrefs.edit()
+            .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
+            .putInt("history_eval_last_attempted", historicalResults.size)
+            .putInt("history_eval_last_failed", evaluationFailures)
+            .putLong("history_eval_last_scan", System.currentTimeMillis())
+            .apply()
+        if (lastEvaluationError != null) {
+            evaluationPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
+        } else if (historicalResults.isNotEmpty()) {
+            evaluationPrefs.edit().remove("history_eval_last_error").apply()
         }
 
         var candlesChecked = 0
@@ -339,7 +338,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
     }
 
     private companion object {
-        const val MAX_HISTORICAL_EVALUATIONS_PER_SCAN = 12
+        const val MAX_HISTORICAL_EVALUATIONS_PER_SCAN = 24
         const val HISTORICAL_LOOKUP_CONCURRENCY = 4
     }
 }

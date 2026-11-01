@@ -23,16 +23,20 @@ data class SignalRecord(
     val score: Int,
     val supports: List<Double>,
     val resistances: List<Double>,
+    val price10m: Double? = null,
     val price15m: Double? = null,
     val price30m: Double? = null,
     val price60m: Double? = null,
+    val result10m: String = "PENDING",
     val result15m: String = "PENDING",
     val result30m: String = "PENDING",
     val result60m: String = "PENDING",
     val entryStatus: String = "BELUM DICEK",
+    val evaluationTime10m: Long? = null,
     val evaluationTime15m: Long? = null,
     val evaluationTime30m: Long? = null,
     val evaluationTime60m: Long? = null,
+    val priceSource10m: String? = null,
     val priceSource15m: String? = null,
     val priceSource30m: String? = null,
     val priceSource60m: String? = null,
@@ -64,13 +68,15 @@ object SignalJournal {
                     stopLoss=o.optDouble("stopLoss"), takeProfit1=o.optDouble("takeProfit1"),
                     takeProfit2=o.optDouble("takeProfit2"), score=o.optInt("score"),
                     supports=levels("supports"), resistances=levels("resistances"),
-                    price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
-                    result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
+                    price10m=optionalPrice("price10m"), price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
+                    result10m=o.optString("result10m","PENDING"), result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
                     result60m=o.optString("result60m","PENDING"),
                     entryStatus=o.optString("entryStatus","BELUM DICEK"),
+                    evaluationTime10m=o.optLong("evaluationTime10m").takeIf { o.has("evaluationTime10m") && !o.isNull("evaluationTime10m") && it > 0L },
                     evaluationTime15m=o.optLong("evaluationTime15m").takeIf { o.has("evaluationTime15m") && !o.isNull("evaluationTime15m") && it > 0L },
                     evaluationTime30m=o.optLong("evaluationTime30m").takeIf { o.has("evaluationTime30m") && !o.isNull("evaluationTime30m") && it > 0L },
                     evaluationTime60m=o.optLong("evaluationTime60m").takeIf { o.has("evaluationTime60m") && !o.isNull("evaluationTime60m") && it > 0L },
+                    priceSource10m=o.optString("priceSource10m").takeIf { it.isNotBlank() },
                     priceSource15m=o.optString("priceSource15m").takeIf { it.isNotBlank() },
                     priceSource30m=o.optString("priceSource30m").takeIf { it.isNotBlank() },
                     priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() },
@@ -90,10 +96,10 @@ object SignalJournal {
             o.put("price", r.price); o.put("entryLow", r.entryLow); o.put("entryHigh", r.entryHigh)
             o.put("stopLoss", r.stopLoss); o.put("takeProfit1", r.takeProfit1); o.put("takeProfit2", r.takeProfit2); o.put("score", r.score)
             o.put("supports", JSONArray(r.supports)); o.put("resistances", JSONArray(r.resistances))
-            o.put("price15m", r.price15m ?: JSONObject.NULL); o.put("price30m", r.price30m ?: JSONObject.NULL); o.put("price60m", r.price60m ?: JSONObject.NULL)
-            o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m); o.put("entryStatus", r.entryStatus)
-            o.put("evaluationTime15m", r.evaluationTime15m ?: JSONObject.NULL); o.put("evaluationTime30m", r.evaluationTime30m ?: JSONObject.NULL); o.put("evaluationTime60m", r.evaluationTime60m ?: JSONObject.NULL)
-            o.put("priceSource15m", r.priceSource15m ?: JSONObject.NULL); o.put("priceSource30m", r.priceSource30m ?: JSONObject.NULL); o.put("priceSource60m", r.priceSource60m ?: JSONObject.NULL)
+            o.put("price10m", r.price10m ?: JSONObject.NULL); o.put("price15m", r.price15m ?: JSONObject.NULL); o.put("price30m", r.price30m ?: JSONObject.NULL); o.put("price60m", r.price60m ?: JSONObject.NULL)
+            o.put("result10m", r.result10m); o.put("result15m", r.result15m); o.put("result30m", r.result30m); o.put("result60m", r.result60m); o.put("entryStatus", r.entryStatus)
+            o.put("evaluationTime10m", r.evaluationTime10m ?: JSONObject.NULL); o.put("evaluationTime15m", r.evaluationTime15m ?: JSONObject.NULL); o.put("evaluationTime30m", r.evaluationTime30m ?: JSONObject.NULL); o.put("evaluationTime60m", r.evaluationTime60m ?: JSONObject.NULL)
+            o.put("priceSource10m", r.priceSource10m ?: JSONObject.NULL); o.put("priceSource15m", r.priceSource15m ?: JSONObject.NULL); o.put("priceSource30m", r.priceSource30m ?: JSONObject.NULL); o.put("priceSource60m", r.priceSource60m ?: JSONObject.NULL)
             o.put("tradeOutcome", r.tradeOutcome); o.put("tradeOutcomeTime", r.tradeOutcomeTime ?: JSONObject.NULL)
             o.put("cohort", r.cohort)
             array.put(o)
@@ -171,14 +177,16 @@ object SignalJournal {
     /** Returns due horizons that still need a historical Spot candle evaluation. */
     fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> =
         read(context).flatMap { r ->
-            listOf(15, 30, 60).mapNotNull { horizon ->
+            listOf(10, 15, 30, 60).mapNotNull { horizon ->
                 val target = r.time + horizon * 60_000L
                 val price = when (horizon) {
+                    10 -> r.price10m
                     15 -> r.price15m
                     30 -> r.price30m
                     else -> r.price60m
                 }
                 val evaluatedAt = when (horizon) {
+                    10 -> r.evaluationTime10m
                     15 -> r.evaluationTime15m
                     30 -> r.evaluationTime30m
                     else -> r.evaluationTime60m
@@ -199,10 +207,12 @@ object SignalJournal {
         candleCloseTime: Long,
         source: String = "BINANCE_SPOT_1M_CANDLE_CLOSE"
     ) {
-        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(15, 30, 60)) return
+        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60)) return
         val updated = read(context).map { r ->
             if (r.id != signalId) return@map r
             when (horizonMinutes) {
+                10 -> if (r.price10m == null || r.evaluationTime10m == null || r.evaluationTime10m > r.time + 10 * 60_000L || r.time + 10 * 60_000L - r.evaluationTime10m > 60_000L)
+                    r.copy(price10m=price, result10m=classify(r, price), evaluationTime10m=candleCloseTime, priceSource10m=source) else r
                 15 -> if (r.price15m == null || r.evaluationTime15m == null || r.evaluationTime15m > r.time + 15 * 60_000L || r.time + 15 * 60_000L - r.evaluationTime15m > 60_000L)
                     r.copy(price15m=price, result15m=classify(r, price), evaluationTime15m=candleCloseTime, priceSource15m=source) else r
                 30 -> if (r.price30m == null || r.evaluationTime30m == null || r.evaluationTime30m > r.time + 30 * 60_000L || r.time + 30 * 60_000L - r.evaluationTime30m > 60_000L)
