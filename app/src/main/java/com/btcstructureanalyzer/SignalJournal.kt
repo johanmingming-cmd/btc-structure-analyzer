@@ -57,7 +57,11 @@ object SignalJournal {
 
     fun read(context: Context): List<SignalRecord> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
-        return runCatching {
+        return parseRecords(raw)
+    }
+
+    internal fun parseRecords(raw: String): List<SignalRecord> {
+
             val array = JSONArray(raw)
             (0 until array.length()).mapNotNull { i ->
                 val o = array.optJSONObject(i) ?: return@mapNotNull null
