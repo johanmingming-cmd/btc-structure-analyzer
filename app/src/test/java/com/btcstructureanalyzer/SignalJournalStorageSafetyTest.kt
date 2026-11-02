@@ -38,4 +38,22 @@ class SignalJournalStorageSafetyTest {
             SignalJournal.parseRecords("""[{"id":"broken","symbol":""")
         }
     }
+    @Test
+    fun validJsonWithInvalidRecordThrowsInsteadOfDroppingRecord() {
+        assertThrows(IllegalStateException::class.java) {
+            SignalJournal.parseRecords(
+                """[{"id":"good-1","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000},{"id":"bad-2","time":2000,"symbol":"","direction":"LONG","price":0}]"""
+            )
+        }
+    }
+
+    @Test
+    fun nonObjectJournalEntryThrowsInsteadOfBeingIgnored() {
+        assertThrows(IllegalStateException::class.java) {
+            SignalJournal.parseRecords(
+                """[{"id":"good-1","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000},null]"""
+            )
+        }
+    }
+
 }
