@@ -169,7 +169,7 @@ raw_result preserves the original journal result (e.g. BENAR, SALAH, NETRAL, PEN
 Missing prices are blank in CSV and null in JSON; they are never converted to zero.
 
 LIMITATIONS
-The current journal holds up to 500 records. Existing evaluation prices may have been fetched
+The current local journal retains up to 2,000 records (newest first). Older records beyond this limit are not retained in the app journal. Existing evaluation prices may have been fetched
 during a manual refresh after the target horizon, rather than at the exact target time.
 Legacy records may lack exact evaluation timestamps and source metadata. Evaluated prices and candle close times are stored, but the full historical OHLC series needed to determine TP/SL hit order is not stored.
 This export cannot establish whether entry was reached or whether TP/SL was hit first.
