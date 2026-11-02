@@ -47,6 +47,8 @@ data class SignalRecord(
 )
 
 object SignalJournal {
+    // Serialize every read-modify-write mutation across scanner, service, and UI callers.
+    // SharedPreferences stores the full journal as one value, so concurrent writers must not race.
     private const val PREFS = "btc_structure"
     private const val KEY = "signal_journal_v1"
     // Expanded local journal capacity for the next prospective test cohort.
@@ -109,6 +111,7 @@ object SignalJournal {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
     }
 
+    @Synchronized
     fun recordSignals(context: Context, coins: List<ScannedCoin>, now: Long = System.currentTimeMillis()) {
         var records = read(context)
         val recentKeys = records
@@ -160,6 +163,7 @@ object SignalJournal {
     private fun supportsAbove(coin: ScannedCoin, above: Double): Double? =
         coin.resistanceLevels.firstOrNull { it > above }
 
+    @Synchronized
     fun updatePrices(context: Context, prices: Map<String, Double>, now: Long = System.currentTimeMillis()) {
         if (prices.isEmpty()) return
         val updated = read(context).map { r ->
@@ -201,6 +205,7 @@ object SignalJournal {
         }.sortedBy { it.targetTime }
 
     /** Stores a historical candle close, not the live ticker at refresh time. */
+    @Synchronized
     fun updateHistoricalEvaluation(
         context: Context,
         signalId: String,
@@ -293,6 +298,7 @@ object SignalJournal {
     fun pendingTradeOutcomes(context: Context, now: Long = System.currentTimeMillis()): List<SignalRecord> =
         read(context).filter { it.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT", "BELUM_TERCAPAI") && now >= it.time + 60 * 60_000L }
 
+    @Synchronized
     fun updateTradeOutcome(context: Context, signalId: String, outcome: TradeOutcome) {
         val updated = read(context).map { r ->
             if (r.id == signalId && r.tradeOutcome in setOf("PENDING", "ENTRY_TIDAK_TERVERIFIKASI", "DATA_TIDAK_CUKUP", "ENTRY_TERLEWAT", "BELUM_TERCAPAI")) r.copy(
