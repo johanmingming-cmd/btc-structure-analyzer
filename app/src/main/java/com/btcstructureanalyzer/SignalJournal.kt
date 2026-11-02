@@ -117,7 +117,7 @@ object SignalJournal {
             throw IllegalStateException("Signal journal could not be read; existing data was left untouched.", error)
         }
 
-    private fun write(context: Context, records: List<SignalRecord>) {
+    internal fun serializeRecords(records: List<SignalRecord>): String {
         val array = JSONArray()
         records.take(MAX_RECORDS).forEach { r ->
             val o = JSONObject()
@@ -134,6 +134,11 @@ object SignalJournal {
             array.put(o)
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
+    }
+
+
+    private fun write(context: Context, records: List<SignalRecord>) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, serializeRecords(records)).apply()
     }
 
     @Synchronized
