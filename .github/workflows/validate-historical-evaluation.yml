@@ -14,6 +14,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -40,6 +41,7 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest
 
       - name: Run Android instrumentation tests
+        timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -49,8 +51,13 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           script: |
-            gradle --no-daemon connectedDebugAndroidTest || {
-              echo 'Instrumentation failed; collecting emulator diagnostics.'
-              adb logcat -d -t 5000
-              exit 1
-            }
+            set +e
+            timeout --signal=TERM --kill-after=30s 8m gradle --no-daemon connectedDebugAndroidTest
+            test_status=$?
+            if [ "$test_status" -ne 0 ]; then
+              echo "Instrumentation failed or timed out (exit: $test_status); collecting emulator diagnostics."
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb logcat -d -t 5000 || true
+              exit "$test_status"
+            fi
