@@ -133,9 +133,8 @@ object SignalJournal {
             o.put("cohort", r.cohort)
             array.put(o)
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, array.toString()).apply()
+        return array.toString()
     }
-
 
     private fun write(context: Context, records: List<SignalRecord>) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY, serializeRecords(records)).apply()
