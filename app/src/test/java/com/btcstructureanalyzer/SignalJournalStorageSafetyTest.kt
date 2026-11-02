@@ -56,4 +56,22 @@ class SignalJournalStorageSafetyTest {
         }
     }
 
+    @Test
+    fun malformedLevelArrayFailsClosed() {
+        assertThrows(IllegalStateException::class.java) {
+            SignalJournal.parseRecords(
+                """[{"id":"bad-level","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000,"supports":[65000,"not-a-number"]}]"""
+            )
+        }
+    }
+
+    @Test
+    fun malformedOptionalEvaluationPriceFailsClosed() {
+        assertThrows(IllegalStateException::class.java) {
+            SignalJournal.parseRecords(
+                """[{"id":"bad-price","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000,"price10m":"unknown"}]"""
+            )
+        }
+    }
+
 }
