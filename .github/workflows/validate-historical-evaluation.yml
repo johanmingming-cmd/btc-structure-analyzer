@@ -5,6 +5,7 @@ on:
     branches:
       - fix/historical-spot-evaluation
       - feature/stage1-evaluation-10m-ui-cleanup
+      - audit/prediction-lab-data-quality-storage
   workflow_dispatch:
 
 permissions:
