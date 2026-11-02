@@ -62,8 +62,8 @@ object SignalJournal {
 
     internal fun parseRecords(raw: String): List<SignalRecord> = runCatching {
         val array = JSONArray(raw)
-            (0 until array.length()).mapNotNull { i ->
-                val o = array.optJSONObject(i) ?: return@mapNotNull null
+            (0 until array.length()).map { i ->
+                val o = array.optJSONObject(i) ?: error("Journal record at index $i is not a JSON object.")
                 fun levels(key: String) = o.optJSONArray(key)?.let { a ->
                     (0 until a.length()).mapNotNull { a.optDouble(it).takeIf { n -> n.isFinite() && n > 0.0 } }
                 } ?: emptyList()
@@ -90,7 +90,11 @@ object SignalJournal {
                     tradeOutcome=o.optString("tradeOutcome", "PENDING"),
                     tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
                     cohort=o.optString("cohort", "LEGACY")
-                ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
+                ).also { record ->
+                    require(record.symbol.isNotBlank() && record.price.isFinite() && record.price > 0.0) {
+                        "Journal record at index $i has invalid required fields."
+                    }
+                }
             }
         }.getOrElse { error ->
             // Never interpret a malformed stored journal as an empty journal.
