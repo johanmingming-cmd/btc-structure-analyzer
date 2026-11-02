@@ -98,23 +98,30 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             }.map { it.await() }
         }
         var evaluationFailures = 0
+        var unavailableEvaluations = 0
         var lastEvaluationError: String? = null
         historicalResults.forEach { (item, result) ->
-            result.getOrNull()?.let { historical ->
-                if (historical != null) SignalJournal.updateHistoricalEvaluation(
+            val historical = result.getOrNull()
+            if (historical != null) {
+                SignalJournal.updateHistoricalEvaluation(
                     context, item.signalId, item.horizonMinutes, historical.first, historical.second
                 )
+            } else {
+                // Null means the endpoint returned successfully but no candle met the
+                // target-time window. Keep the horizon pending, but expose the gap.
+                unavailableEvaluations++
+                val detail = result.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName }
+                    ?: "candle eligible tidak ditemukan pada seluruh endpoint"
+                lastEvaluationError = "${item.symbol} ${item.horizonMinutes}m: $detail"
             }
-            result.exceptionOrNull()?.let { error ->
-                evaluationFailures++
-                lastEvaluationError = "${item.symbol} ${item.horizonMinutes}m: ${error.message ?: error.javaClass.simpleName}"
-            }
+            if (result.isFailure) evaluationFailures++
         }
         val evaluationPrefs = context.getSharedPreferences("btc_structure", android.content.Context.MODE_PRIVATE)
         evaluationPrefs.edit()
             .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
             .putInt("history_eval_last_attempted", historicalResults.size)
             .putInt("history_eval_last_failed", evaluationFailures)
+            .putInt("history_eval_last_unavailable", unavailableEvaluations)
             .putLong("history_eval_last_scan", System.currentTimeMillis())
             .apply()
         if (lastEvaluationError != null) {
