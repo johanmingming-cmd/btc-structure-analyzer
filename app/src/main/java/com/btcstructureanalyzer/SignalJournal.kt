@@ -97,7 +97,6 @@ object SignalJournal {
             // Returning empty here would let the next write silently replace the only copy.
             throw IllegalStateException("Signal journal could not be read; existing data was left untouched.", error)
         }
-    }
 
     private fun write(context: Context, records: List<SignalRecord>) {
         val array = JSONArray()
