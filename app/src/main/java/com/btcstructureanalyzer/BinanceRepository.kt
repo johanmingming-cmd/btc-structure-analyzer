@@ -85,7 +85,10 @@ class BinanceRepository {
                                 closeTime >= targetTime - 60_000L) add(close to closeTime)
                         }
                     }
-                    return@withContext candidates.maxByOrNull { it.second }
+                    val nearest = candidates.maxByOrNull { it.second }
+                    // A successful HTTP response can still contain no eligible candle.
+                    // Treat that as an unavailable result for this host and try the next host.
+                    if (nearest != null) return@withContext nearest
                 }
             } catch (e: Exception) {
                 lastError = e
