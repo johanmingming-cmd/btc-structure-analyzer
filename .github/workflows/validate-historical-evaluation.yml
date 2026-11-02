@@ -80,10 +80,9 @@ jobs:
             TEST_STATUS=$?
             kill "$LOGCAT_PID" 2>/dev/null || true
             wait "$LOGCAT_PID" 2>/dev/null || true
-            if [ "$TEST_STATUS" -ne 0 ]; then
-              echo "Instrumentation failed (exit: $TEST_STATUS). Captured logcat follows."
-              adb devices -l || true
-              adb shell getprop sys.boot_completed || true
-              tail -n 1500 "$LOGCAT_FILE" || true
-              exit "$TEST_STATUS"
-            fi
+            echo "Instrumentation command exit status: $TEST_STATUS"
+            adb devices -l || true
+            adb shell getprop sys.boot_completed || true
+            echo "Captured emulator logcat (last 1500 lines):"
+            tail -n 1500 "$LOGCAT_FILE" || true
+            exit "$TEST_STATUS"
