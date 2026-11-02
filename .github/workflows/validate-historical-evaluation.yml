@@ -66,23 +66,4 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 2
-          script: |
-            set +e
-            LOGCAT_FILE="$RUNNER_TEMP/android-instrumentation-logcat.txt"
-            adb logcat -c || true
-            adb logcat -v threadtime > "$LOGCAT_FILE" 2>&1 &
-            LOGCAT_PID=$!
-            echo "Emulator boot state:"
-            adb shell getprop sys.boot_completed || true
-            echo "Installed instrumentation targets:"
-            adb shell pm list instrumentation || true
-            timeout --signal=TERM --kill-after=30s 8m gradle --no-daemon --info connectedDebugAndroidTest
-            TEST_STATUS=$?
-            kill "$LOGCAT_PID" 2>/dev/null || true
-            wait "$LOGCAT_PID" 2>/dev/null || true
-            echo "Instrumentation command exit status: $TEST_STATUS"
-            adb devices -l || true
-            adb shell getprop sys.boot_completed || true
-            echo "Captured emulator logcat (last 1500 lines):"
-            tail -n 1500 "$LOGCAT_FILE" || true
-            exit "$TEST_STATUS"
+          script: bash .github/scripts/run-android-instrumentation.sh
