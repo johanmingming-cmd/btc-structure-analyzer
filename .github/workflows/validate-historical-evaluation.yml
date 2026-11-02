@@ -34,7 +34,7 @@ jobs:
       - name: Install Android platform and build tools
         shell: bash
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-30" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
       - name: Compile debug APK
         run: gradle --no-daemon assembleDebug
       - name: Run unit tests
@@ -44,12 +44,12 @@ jobs:
         timeout-minutes: 12
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: default
+          api-level: 35
+          target: google_apis
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 2048 -cores 2
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 2
           script: |
             set +e
             timeout --signal=TERM --kill-after=30s 8m gradle --no-daemon connectedDebugAndroidTest
