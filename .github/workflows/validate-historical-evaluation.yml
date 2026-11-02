@@ -46,4 +46,11 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          script: gradle --no-daemon connectedDebugAndroidTest
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          script: |
+            gradle --no-daemon connectedDebugAndroidTest || {
+              echo 'Instrumentation failed; collecting emulator diagnostics.'
+              adb logcat -d -t 5000
+              exit 1
+            }
