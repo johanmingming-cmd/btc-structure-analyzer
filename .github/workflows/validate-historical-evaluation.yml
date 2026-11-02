@@ -40,6 +40,21 @@ jobs:
       - name: Run unit tests
         run: gradle --no-daemon testDebugUnitTest
 
+      - name: Enable KVM for Android emulator
+        shell: bash
+        run: |
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is unavailable on this runner."
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm
+          if [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+            echo "KVM device exists but is not readable and writable by the runner."
+            exit 1
+          fi
+          echo "KVM is accessible; emulator can use hardware virtualization."
+
       - name: Run Android instrumentation tests
         timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
