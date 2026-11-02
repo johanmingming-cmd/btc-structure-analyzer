@@ -49,7 +49,9 @@ data class SignalRecord(
 object SignalJournal {
     private const val PREFS = "btc_structure"
     private const val KEY = "signal_journal_v1"
-    private const val MAX_RECORDS = 500
+    // Expanded local journal capacity for the next prospective test cohort.
+    // Keep newest-first ordering; exports remain read-only and include all retained records.
+    private const val MAX_RECORDS = 2_000
 
     fun read(context: Context): List<SignalRecord> {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]") ?: "[]"
