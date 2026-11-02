@@ -64,10 +64,25 @@ object SignalJournal {
         val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val o = array.optJSONObject(i) ?: error("Journal record at index $i is not a JSON object.")
-                fun levels(key: String) = o.optJSONArray(key)?.let { a ->
-                    (0 until a.length()).mapNotNull { a.optDouble(it).takeIf { n -> n.isFinite() && n > 0.0 } }
-                } ?: emptyList()
-                fun optionalPrice(key: String) = if (o.isNull(key) || !o.has(key)) null else o.optDouble(key).takeIf { it.isFinite() && it > 0.0 }
+                fun levels(key: String): List<Double> {
+                    if (!o.has(key) || o.isNull(key)) return emptyList()
+                    val values = o.optJSONArray(key) ?: error("Journal field '$key' at index $i is not an array.")
+                    return (0 until values.length()).map { levelIndex ->
+                        val value = values.optDouble(levelIndex, Double.NaN)
+                        require(value.isFinite() && value > 0.0) {
+                            "Journal field '$key' at index $i contains an invalid level at position $levelIndex."
+                        }
+                        value
+                    }
+                }
+                fun optionalPrice(key: String): Double? {
+                    if (!o.has(key) || o.isNull(key)) return null
+                    val value = o.optDouble(key, Double.NaN)
+                    require(value.isFinite() && value > 0.0) {
+                        "Journal field '$key' at index $i contains an invalid price."
+                    }
+                    return value
+                }
                 SignalRecord(
                     id=o.optString("id"), time=o.optLong("time"), symbol=o.optString("symbol"),
                     direction=o.optString("direction"), price=o.optDouble("price"),
