@@ -89,7 +89,11 @@ object SignalJournal {
                     cohort=o.optString("cohort", "LEGACY")
                 ).takeIf { it.symbol.isNotBlank() && it.price > 0.0 }
             }
-        }.getOrDefault(emptyList())
+        }.getOrElse { error ->
+            // Never interpret a malformed stored journal as an empty journal.
+            // Returning empty here would let the next write silently replace the only copy.
+            throw IllegalStateException("Signal journal could not be read; existing data was left untouched.", error)
+        }
     }
 
     private fun write(context: Context, records: List<SignalRecord>) {
