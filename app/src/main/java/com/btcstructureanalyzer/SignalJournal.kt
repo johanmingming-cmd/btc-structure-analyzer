@@ -60,9 +60,8 @@ object SignalJournal {
         return parseRecords(raw)
     }
 
-    internal fun parseRecords(raw: String): List<SignalRecord> {
-
-            val array = JSONArray(raw)
+    internal fun parseRecords(raw: String): List<SignalRecord> = runCatching {
+        val array = JSONArray(raw)
             (0 until array.length()).mapNotNull { i ->
                 val o = array.optJSONObject(i) ?: return@mapNotNull null
                 fun levels(key: String) = o.optJSONArray(key)?.let { a ->
