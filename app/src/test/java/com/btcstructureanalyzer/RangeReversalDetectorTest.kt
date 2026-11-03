@@ -65,4 +65,30 @@ class RangeReversalDetectorTest {
         assertEquals(SetupStatus.WAIT, result.status)
         assertEquals(RangeWaitReason.INSUFFICIENT_DATA, result.waitReason)
     }
+    @Test fun distinguishesNoBoundarySweepFromOtherRangeRejectionFailures() {
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, base15(), base5())
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
+        assertEquals("NO_BOUNDARY_SWEEP", result.diagnosticDetail)
+    }
+
+    @Test fun reportsLowVolumeSeparatelyAfterAValidBoundaryRejection() {
+        val m15 = base15()
+        m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 98.8, 100.3, 1400.0, 31)
+        val result = RangeReversalDetector.detect(
+            AdaptiveRegime.RANGE, m15, base5(),
+            RangeDetectionConfig(minimumVolumeRatio = 2.0)
+        )
+        assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
+        assertEquals("VOLUME_RATIO_TOO_LOW", result.diagnosticDetail)
+    }
+
+    @Test fun distinguishesMissingFiveMinuteTrigger() {
+        val m15 = base15()
+        m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 98.8, 100.3, 1400.0, 31)
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
+        assertEquals(RangeWaitReason.NO_5M_CONFIRMATION, result.waitReason)
+        assertEquals("FIVE_MINUTE_TRIGGER_NOT_MET", result.diagnosticDetail)
+    }
+
 }
