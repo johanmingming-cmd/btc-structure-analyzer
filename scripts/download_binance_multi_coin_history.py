@@ -108,7 +108,8 @@ def main():
    accepted.append(symbol)
    counts=", ".join(f"{interval}={len(rows)}" for interval,rows in datasets.items())
    print(f"ACCEPTED {symbol}: {counts}",flush=True)
-  except (ValueError,RuntimeError,urllib.error.HTTPError) as exc:
+  except (ValueError,RuntimeError,OSError) as exc:
+   # Network failures for one pair must not prevent trying the next eligible pair.
    print(f"SKIPPED {symbol}: {exc}",flush=True)
   time.sleep(0.15)
  if len(accepted)<COUNT:
