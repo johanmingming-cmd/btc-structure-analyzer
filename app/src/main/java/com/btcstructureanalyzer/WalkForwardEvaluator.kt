@@ -11,7 +11,8 @@ object WalkForwardEvaluator {
   require(candles.zipWithNext().all{(a,b)->b.openTime>a.openTime && b.closeTime>a.closeTime})
   require(candles.all{c->c.openTime>=0L&&c.closeTime>c.openTime&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&c.volume.isFinite()&&c.close>0.0&&c.open>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)&&c.low>0.0&&c.volume>=0.0})
   val split=(candles.size*trainFraction).toInt().coerceIn(1,candles.size-1);val smallest=horizons.min()
-  // Common decision window ends where the shortest horizon still has a known outcome.\n  // Longer horizons independently exclude decisions without a complete future outcome.\n  val decisionEndExclusive=candles.size-smallest\n  val decisionIndices=(split until decisionEndExclusive step evaluationStep).toList()
+  // Common decision window ends where the shortest horizon still has a known outcome.
+  // Longer horizons independently exclude decisions without a complete future outcome.\n  val decisionEndExclusive=candles.size-smallest\n  val decisionIndices=(split until decisionEndExclusive step evaluationStep).toList()
   val predictions=decisionIndices.associateWith{i->predictor(candles.subList(0,i+1).toList())}
   val rows=horizons.map{h->
    var evaluated=0;var hits=0;var misses=0;var neutral=0;var waits=0
