@@ -18,7 +18,7 @@ class HistoricalMultiCoinValidationTest {
   return listOf(
    TimeSegment("development",warmup,developmentEnd),
    TimeSegment("validation",developmentEnd,validationEnd),
-   TimeSegment("final_holdout",validationEnd,end)
+   TimeSegment("reserved_final_holdout",validationEnd,end)
   )
  }
  private fun developmentWindow(candles:List<Candle>):TimeSegment = segments(candles).first()
@@ -194,7 +194,7 @@ class HistoricalMultiCoinValidationTest {
    }
   }
  }
- @Test fun reportDefaultBaselineAcrossDevelopmentValidationAndFinalHoldout(){
+ @Test fun reportDefaultBaselineAcrossDevelopmentAndValidation(){
   val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
   val manifestJson=JSONObject(File(root,"manifest.json").readText())
   val symbolsArray=manifestJson.getJSONArray("symbols")
@@ -204,7 +204,7 @@ class HistoricalMultiCoinValidationTest {
    val coin=File(root,symbol)
    perCoin[symbol]=segments(load(File(coin,"5m.csv")))
   }
-  for(segmentIndex in 0..2){
+  for(segmentIndex in 0..1){
    val segmentName=perCoin.getValue(symbols.first())[segmentIndex].name
    val aggregates=MultiCoinMetricsAggregator()
    for(symbol in symbols){
