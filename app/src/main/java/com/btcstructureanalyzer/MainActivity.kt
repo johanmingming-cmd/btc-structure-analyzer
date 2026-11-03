@@ -558,7 +558,7 @@ private fun AnalyzerApp(context: Context) {
                                             // CoinScanner owns journal writes; do not repeat the same write here.
                                         }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; reloadSignalHistory(); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
@@ -673,7 +673,7 @@ private fun AnalyzerApp(context: Context) {
                                         }
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
-                                        signalHistory = SignalJournal.read(context)
+                                        reloadSignalHistory()
                                     } finally {
                                         historyRefreshLoading = false
                                     }
