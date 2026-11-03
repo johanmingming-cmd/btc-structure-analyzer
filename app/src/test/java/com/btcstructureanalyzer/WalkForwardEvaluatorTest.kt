@@ -17,6 +17,28 @@ class WalkForwardEvaluatorTest {
   assertEquals(10,result.horizons[2].candidateCount)
  }
 
+ @Test fun rejectsMissingCandleIntervalsBecauseHorizonsAreMeasuredInBars(){
+  val data=series(30).toMutableList()
+  data.removeAt(12)
+  try{
+   WalkForwardEvaluator.evaluate(data,listOf(2),0.5){AdaptiveDecision.LONG}
+   throw AssertionError("A candle gap must be rejected for bar-based horizons")
+  }catch(_:IllegalArgumentException){
+   // Expected.
+  }
+ }
+
+ @Test fun rejectsInconsistentCandleDurations(){
+  val data=series(30).toMutableList()
+  data[15]=data[15].copy(closeTime=data[15].closeTime-1L)
+  try{
+   WalkForwardEvaluator.evaluate(data,listOf(2),0.5){AdaptiveDecision.LONG}
+   throw AssertionError("Inconsistent candle duration must be rejected")
+  }catch(_:IllegalArgumentException){
+   // Expected.
+  }
+ }
+
  @Test fun waitPredictionsAreExcludedFromHitRateButCountedInCoverage(){
   val r=WalkForwardEvaluator.evaluate(series(30),listOf(2),0.5){AdaptiveDecision.WAIT};val h=r.horizons.single()
   assertEquals(0,h.evaluated);assertEquals(null,h.hitRatePercent);assertEquals(0.0,h.coveragePercent!!,0.0001);assertEquals(h.candidateCount,h.waitCount)
