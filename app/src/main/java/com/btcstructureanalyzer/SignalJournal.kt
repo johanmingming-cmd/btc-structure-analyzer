@@ -124,6 +124,15 @@ object SignalJournal {
                     require(value is Number) { "field $key bukan angka" }
                     return value.toDouble().also { require(it.isFinite() && it > 0.0) { "field $key harus positif dan finite" } }
                 }
+                // TP/SL and entry fields are legacy-only metadata; malformed values never block journal recovery.
+                fun legacyPrice(key: String): Double? {
+                    if (!row.has(key) || row.isNull(key)) return null
+                    val value = row.opt(key) as? Number ?: return null
+                    return value.toDouble().takeIf { it.isFinite() && it > 0.0 }
+                }
+                fun legacyTime(key: String): Long? = runCatching { optionalTime(key) }.getOrNull()
+                fun legacyString(key: String, default: String): String =
+                    (row.opt(key) as? String)?.takeIf { it.isNotBlank() } ?: default
                 fun optionalTime(key: String): Long? {
                     if (!row.has(key) || row.isNull(key)) return null
                     val value = row.opt(key)
@@ -155,9 +164,8 @@ object SignalJournal {
                 require(direction == "LONG" || direction == "SHORT") { "direction harus LONG atau SHORT" }
                 val price = requiredPrice("price")
                 val score = requiredInt("score")
-                val entryLow = optionalPrice("entryLow")
-                val entryHigh = optionalPrice("entryHigh")
-                require(entryLow == null || entryHigh == null || entryLow <= entryHigh) { "rentang entry terbalik" }
+                val entryLow = legacyPrice("entryLow")
+                val entryHigh = legacyPrice("entryHigh")
 
                 SignalRecord(
                     id = id, time = time, symbol = symbol, direction = direction, price = price, score = score,
@@ -178,11 +186,11 @@ object SignalJournal {
                     priceSource60m = optionalString("priceSource60m"),
                     cohort = optionalString("cohort", "LEGACY")!!,
                     entryLow = entryLow, entryHigh = entryHigh,
-                    stopLoss = optionalPrice("stopLoss"), takeProfit1 = optionalPrice("takeProfit1"),
-                    takeProfit2 = optionalPrice("takeProfit2"),
-                    entryStatus = optionalString("entryStatus", "BELUM DICEK")!!,
-                    tradeOutcome = optionalString("tradeOutcome", "PENDING")!!,
-                    tradeOutcomeTime = optionalTime("tradeOutcomeTime")
+                    stopLoss = legacyPrice("stopLoss"), takeProfit1 = legacyPrice("takeProfit1"),
+                    takeProfit2 = legacyPrice("takeProfit2"),
+                    entryStatus = legacyString("entryStatus", "BELUM DICEK"),
+                    tradeOutcome = legacyString("tradeOutcome", "PENDING"),
+                    tradeOutcomeTime = legacyTime("tradeOutcomeTime")
                 )
             }
         } catch (error: Exception) {
