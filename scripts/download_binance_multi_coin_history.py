@@ -117,6 +117,8 @@ def main():
    counts=", ".join(f"{interval}={len(rows)}" for interval,rows in datasets.items())
    print(f"ACCEPTED {symbol}: {counts}",flush=True)
   except (ValueError,RuntimeError,OSError,TimeoutError) as exc:
+   partial=OUT/(symbol+".tmp")
+   if partial.exists(): shutil.rmtree(partial)
    # Network failures for one pair must not prevent trying the next eligible pair.
    print(f"SKIPPED {symbol}: {exc}",flush=True)
   time.sleep(0.15)
