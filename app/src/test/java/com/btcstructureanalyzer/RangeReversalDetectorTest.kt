@@ -33,6 +33,14 @@ class RangeReversalDetectorTest {
         assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
     }
 
+    @Test fun rejectsInvertedHighLowRange() {
+        val m15 = base15()
+        m15[10] = m15[10].copy(high = 99.0, low = 100.0)
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
     @Test fun rejectsOutOfOrderCandlesAtDetectorBoundary() {
         val m15 = base15()
         m15[m15.lastIndex] = m15[m15.lastIndex].copy(openTime = 10L, closeTime = 11L)
