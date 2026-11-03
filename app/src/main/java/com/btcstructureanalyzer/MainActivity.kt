@@ -637,45 +637,51 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshError = null
                                     historyRefreshMessage = null
                                     try {
-                                        val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
-                                        var evaluationFailures = 0
-                                        var evaluationUpdated = 0
-                                        var lastEvaluationError: String? = null
-                                        for (pending in dueEvaluations) {
-                                            try {
-                                                val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                if (historical != null) {
-                                                    SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
-                                                    evaluationUpdated++
-                                                } else {
+                                        val result = withContext(Dispatchers.IO) {
+                                            val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
+                                            var evaluationFailures = 0
+                                            var evaluationUpdated = 0
+                                            var lastEvaluationError: String? = null
+                                            for (pending in dueEvaluations) {
+                                                try {
+                                                    val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
+                                                    if (historical != null) {
+                                                        SignalJournal.updateHistoricalEvaluation(
+                                                            context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
+                                                        )
+                                                        evaluationUpdated++
+                                                    } else {
+                                                        evaluationFailures++
+                                                        lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                                    }
+                                                } catch (error: Exception) {
                                                     evaluationFailures++
-                                                    lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                                    lastEvaluationError = error.message ?: "Gagal mengambil candle historis"
                                                 }
-                                            } catch (e: Exception) {
-                                                evaluationFailures++
-                                                lastEvaluationError = e.message ?: "Gagal mengambil candle historis"
-                                                // Leave this horizon pending so the next refresh/auto scan can retry.
                                             }
+                                            val pendingCount = SignalJournal.pendingEvaluations(context).size
+                                            val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                                            evalPrefs.edit()
+                                                .putInt("history_eval_pending", pendingCount)
+                                                .putInt("history_eval_last_attempted", dueEvaluations.size)
+                                                .putInt("history_eval_last_failed", evaluationFailures)
+                                                .putLong("history_eval_last_scan", System.currentTimeMillis())
+                                                .apply()
+                                            if (lastEvaluationError != null) {
+                                                evalPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
+                                            } else if (dueEvaluations.isNotEmpty()) {
+                                                evalPrefs.edit().remove("history_eval_last_error").apply()
+                                            }
+                                            val message = if (dueEvaluations.isEmpty()) {
+                                                "Belum ada evaluasi yang jatuh tempo. Evaluasi berikutnya diproses setelah waktunya tercapai."
+                                            } else {
+                                                "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • $pendingCount masih menunggu."
+                                            }
+                                            Triple(evaluationUpdated, evaluationFailures, message)
                                         }
-                                        val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
-                                        evalPrefs.edit()
-                                            .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
-                                            .putInt("history_eval_last_attempted", dueEvaluations.size)
-                                            .putInt("history_eval_last_failed", evaluationFailures)
-                                            .putLong("history_eval_last_scan", System.currentTimeMillis())
-                                            .apply()
-                                        if (lastEvaluationError != null) {
-                                            evalPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
-                                        } else if (dueEvaluations.isNotEmpty()) {
-                                            evalPrefs.edit().remove("history_eval_last_error").apply()
-                                        }
-                                        signalHistory = SignalJournal.read(context)
-                                        historyRefreshMessage = if (dueEvaluations.isEmpty()) {
-                                            "Belum ada evaluasi yang jatuh tempo untuk diproses. Evaluasi berikutnya akan berjalan setelah waktunya tercapai."
-                                        } else {
-                                            "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • ${SignalJournal.pendingEvaluations(context).size} masih menunggu."
-                                        }
-                                    } catch (e: Exception) {
+                                        reloadSignalHistory()
+                                        historyRefreshMessage = result.third
+                                    }                                    } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
                                         reloadSignalHistory()
                                     } finally {
