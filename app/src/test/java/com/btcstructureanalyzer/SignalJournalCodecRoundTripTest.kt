@@ -117,7 +117,8 @@ class SignalJournalCodecRoundTripTest {
 
         assertEquals("old-1", restored.id)
         assertEquals(1700000000000L, restored.time)
-        assertEquals(emptyList<Double>(), restored.supports.takeLast(0))
+        assertEquals(listOf(64500.0), restored.supports)
+        assertEquals(listOf(65500.0), restored.resistances)
         assertEquals(null, restored.price10m)
         assertEquals(null, restored.price15m)
         assertEquals(null, restored.price30m)
