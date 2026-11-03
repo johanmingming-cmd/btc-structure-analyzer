@@ -39,11 +39,16 @@ jobs:
         env:
           MULTI_HISTORY_DAYS: "90"
           MULTI_HISTORY_COINS: "10"
-          MULTI_HISTORY_DIR: build/multi-coin-history
+          MULTI_HISTORY_DIR: ${{ github.workspace }}/build/multi-coin-history
         run: python scripts/download_binance_multi_coin_history.py
+      - name: Verify downloaded datasets
+        shell: bash
+        run: |
+          test "$(find "$GITHUB_WORKSPACE/build/multi-coin-history" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ge 10
+          find "$GITHUB_WORKSPACE/build/multi-coin-history" -mindepth 2 -maxdepth 2 -type f -name '*.csv' -print
       - name: Compile debug APK
         run: gradle --no-daemon assembleDebug
-      - name: Run unit and mandatory multi-coin historical validation
+      - name: Run mandatory multi-coin historical validation
         env:
-          MULTI_HISTORY_DIR: build/multi-coin-history
+          MULTI_HISTORY_DIR: ${{ github.workspace }}/build/multi-coin-history
         run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.HistoricalMultiCoinValidationTest
