@@ -548,8 +548,8 @@ private fun AnalyzerApp(context: Context) {
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("USDT FUTURES OPPORTUNITIES • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Memeringkat koin USDT Futures berdasarkan likuiditas, tren 1H/15M, dan momentum 5M. Data harga/candle dari Binance Spot. Analisis saja; tidak menempatkan order.", color = Muted, fontSize = 11.sp)
+                                Text("SPOT USDT OPPORTUNITIES • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Memeringkat pasangan Spot USDT yang juga tersedia sebagai kontrak Futures USDT perpetual, berdasarkan likuiditas, tren 1H/15M, dan momentum 5M. Harga dan candle analisis berasal dari Binance Spot. Analisis saja; tidak menempatkan order.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
@@ -565,7 +565,7 @@ private fun AnalyzerApp(context: Context) {
                                         finally { scanDiagnostics = scanner.lastDiagnostics; reloadSignalHistory(); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
+                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PASANGAN SPOT")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
