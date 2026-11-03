@@ -163,7 +163,8 @@ object SignalJournal {
                     tradeOutcomeTime=optionalLong("tradeOutcomeTime"),
                     cohort=stringValue("cohort", "LEGACY")!!
                 ).also { record ->
-                    require(record.time > 0L && record.symbol.isNotBlank() && record.direction.isNotBlank()) {
+                    require(record.id.isNotBlank() && record.time > 0L &&
+                        record.symbol.isNotBlank() && record.direction in setOf("LONG", "SHORT")) {
                         "Journal record at index $i has invalid required identity fields."
                     }
                 }
