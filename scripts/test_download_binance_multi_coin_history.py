@@ -1,5 +1,6 @@
 import importlib.util
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).with_name("download_binance_multi_coin_history.py")
@@ -42,6 +43,18 @@ class KlineValidationTests(unittest.TestCase):
         row[5] = "-1"
         with self.assertRaises(ValueError):
             DOWNLOADER.validate_kline(row, "BTCUSDT", "5m")
+
+
+
+class UniverseFilteringTests(unittest.TestCase):
+    @patch.object(DOWNLOADER, "get_json")
+    def test_excludes_usd1_and_u_stablecoin_pairs(self, get_json):
+        get_json.return_value = [
+            {"symbol": "BTCUSDT", "quoteVolume": "1000"},
+            {"symbol": "USD1USDT", "quoteVolume": "900"},
+            {"symbol": "UUSDT", "quoteVolume": "800"},
+        ]
+        self.assertEqual(DOWNLOADER.ranked_symbols(), ["BTCUSDT"])
 
 
 if __name__ == "__main__":
