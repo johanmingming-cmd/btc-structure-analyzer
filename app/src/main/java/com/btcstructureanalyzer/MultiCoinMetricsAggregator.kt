@@ -27,14 +27,18 @@ class MultiCoinMetricsAggregator {
         require((row.evaluated == 0) == (maxAbs == null))
         require(mean == null || mean.isFinite())
         require(maxAbs == null || (maxAbs.isFinite() && maxAbs >= 0.0))
+        require(mean == null || maxAbs == null || kotlin.math.abs(mean) <= maxAbs + 1e-9) {
+            "Mean signed return cannot exceed the maximum absolute return"
+        }
         val total = totals.getOrPut(row.horizonBars) { Totals() }
-        total.candidates += row.candidateCount
-        total.evaluated += row.evaluated
-        total.hits += row.directionalHits
-        total.misses += row.misses
-        total.neutral += row.neutral
-        total.waits += row.waitCount
+        total.candidates = Math.addExact(total.candidates, row.candidateCount)
+        total.evaluated = Math.addExact(total.evaluated, row.evaluated)
+        total.hits = Math.addExact(total.hits, row.directionalHits)
+        total.misses = Math.addExact(total.misses, row.misses)
+        total.neutral = Math.addExact(total.neutral, row.neutral)
+        total.waits = Math.addExact(total.waits, row.waitCount)
         total.signedReturnSum += (mean ?: 0.0) * row.evaluated
+        require(total.signedReturnSum.isFinite()) { "Pooled signed-return sum overflowed" }
         total.maxAbsoluteReturn = maxOf(total.maxAbsoluteReturn, maxAbs ?: 0.0)
     }
 
