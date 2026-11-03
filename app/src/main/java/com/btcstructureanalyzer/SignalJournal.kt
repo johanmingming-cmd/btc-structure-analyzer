@@ -75,6 +75,13 @@ object SignalJournal {
                         value
                     }
                 }
+                fun requiredPrice(key: String): Double {
+                    val value = o.optDouble(key, Double.NaN)
+                    require(value.isFinite() && value > 0.0) {
+                        "Journal field '$key' at index $i is missing or contains an invalid price."
+                    }
+                    return value
+                }
                 fun optionalPrice(key: String): Double? {
                     if (!o.has(key) || o.isNull(key)) return null
                     val value = o.optDouble(key, Double.NaN)
@@ -83,12 +90,20 @@ object SignalJournal {
                     }
                     return value
                 }
+                val time = o.optLong("time", 0L)
+                val symbol = o.optString("symbol")
+                val direction = o.optString("direction")
+                val entryLow = requiredPrice("entryLow")
+                val entryHigh = requiredPrice("entryHigh")
+                require(entryLow <= entryHigh) {
+                    "Journal record at index $i has an inverted entry range."
+                }
                 SignalRecord(
-                    id=o.optString("id"), time=o.optLong("time"), symbol=o.optString("symbol"),
-                    direction=o.optString("direction"), price=o.optDouble("price"),
-                    entryLow=o.optDouble("entryLow"), entryHigh=o.optDouble("entryHigh"),
-                    stopLoss=o.optDouble("stopLoss"), takeProfit1=o.optDouble("takeProfit1"),
-                    takeProfit2=o.optDouble("takeProfit2"), score=o.optInt("score"),
+                    id=o.optString("id"), time=time, symbol=symbol,
+                    direction=direction, price=requiredPrice("price"),
+                    entryLow=entryLow, entryHigh=entryHigh,
+                    stopLoss=requiredPrice("stopLoss"), takeProfit1=requiredPrice("takeProfit1"),
+                    takeProfit2=requiredPrice("takeProfit2"), score=o.optInt("score"),
                     supports=levels("supports"), resistances=levels("resistances"),
                     price10m=optionalPrice("price10m"), price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
                     result10m=o.optString("result10m","PENDING"), result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
@@ -106,8 +121,8 @@ object SignalJournal {
                     tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
                     cohort=o.optString("cohort", "LEGACY")
                 ).also { record ->
-                    require(record.symbol.isNotBlank() && record.price.isFinite() && record.price > 0.0) {
-                        "Journal record at index $i has invalid required fields."
+                    require(record.time > 0L && record.symbol.isNotBlank() && record.direction.isNotBlank()) {
+                        "Journal record at index $i has invalid required identity fields."
                     }
                 }
             }
