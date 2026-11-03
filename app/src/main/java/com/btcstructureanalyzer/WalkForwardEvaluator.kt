@@ -18,6 +18,7 @@ object WalkForwardEvaluator {
   // Common decision window ends where the shortest horizon still has a known outcome.
   // Longer horizons independently exclude decisions without a complete future outcome.
   val decisionEndExclusive=candles.size-smallest
+  require(horizons.all{h->(split until decisionEndExclusive step evaluationStep).any{it<candles.size-h}}) { "Each horizon must have at least one eligible test decision" }
   val decisionIndices=(split until decisionEndExclusive step evaluationStep).toList()
   val predictions=decisionIndices.associateWith{i->predictor(candles.subList(0,i+1).toList())}
   val rows=horizons.map{h->
