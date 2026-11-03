@@ -6,8 +6,11 @@ from pathlib import Path
 
 BASE="https://data-api.binance.vision/api/v3"
 INTERVALS={"1h":3600000,"15m":900000,"5m":300000}
-MINIMUM={"1h":1000,"15m":4000,"5m":12000}
 DAYS=int(os.environ.get("MULTI_HISTORY_DAYS","90"))
+def minimum_bars(days):
+ # Require at least 95% of the requested period at each interval.
+ return {interval:max(1,math.floor(days*86400000/step*0.95)) for interval,step in INTERVALS.items()}
+MINIMUM=minimum_bars(DAYS)
 COUNT=int(os.environ.get("MULTI_HISTORY_COINS","10"))
 OUT=Path(os.environ.get("MULTI_HISTORY_DIR","build/multi-coin-history"))
 LIMIT=1000
@@ -161,7 +164,7 @@ def main():
    time.sleep(0.15)
   if len(accepted)<COUNT:
    raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
-  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
+  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"requestedDays":DAYS,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
   temp=staging/"manifest.json.tmp"
   temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
   temp.replace(staging/"manifest.json")
