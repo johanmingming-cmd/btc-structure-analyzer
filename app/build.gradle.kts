@@ -1,3 +1,5 @@
+import org.gradle.api.tasks.testing.Test
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -33,6 +35,12 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+}
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("passed", "skipped", "failed", "standardOut", "standardError")
+        showStandardStreams = true
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

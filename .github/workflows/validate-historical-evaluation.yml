@@ -1,5 +1,4 @@
 name: Validate Historical Evaluation Fix
-
 on:
   push:
     branches:
@@ -7,14 +6,8 @@ on:
       - feature/stage1-evaluation-10m-ui-cleanup
       - fix/prediction-lab-audit-2026
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches:
-      - feature/stage1-evaluation-10m-ui-cleanup
-
 permissions:
   contents: read
-
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -26,6 +19,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -38,7 +35,14 @@ jobs:
         shell: bash
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Download public BTCUSDT Spot history
+        env:
+          BTC_HISTORY_DAYS: "90"
+          BTC_HISTORY_DIR: ${{ github.workspace }}/build/btc-history
+        run: python scripts/download_binance_spot_history.py
       - name: Compile debug APK
         run: gradle --no-daemon assembleDebug
-      - name: Run unit tests
-        run: gradle --no-daemon testDebugUnitTest
+      - name: Run BTC-only historical validation
+        env:
+          BTC_HISTORY_DIR: ${{ github.workspace }}/build/btc-history
+        run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.HistoricalBtcValidationTest

@@ -1,0 +1,15 @@
+name: Prediction Lab CI Diagnostic
+on:
+  push:
+    branches:
+      - implementation/prediction-lab-stage-b3-core
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm GitHub Actions runner
+        run: |
+          echo "Prediction Lab diagnostic runner started"
+          python --version
