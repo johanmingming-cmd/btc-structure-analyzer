@@ -43,6 +43,17 @@ class SignalJournalCodecTest {
         assertEquals(2800.0, SignalJournal.parseRecords(SignalJournal.serializeRecords(listOf(restored))).single().takeProfit2!!, 0.0)
     }
 
+    @Test fun malformedLegacyTpSlValuesDoNotBlockDirectionHistory() {
+        val raw = """[{"id":"old-bad-tpsl","time":1700000000000,"symbol":"BTCUSDT","direction":"LONG","price":65000.0,"score":80,"entryLow":"bad","entryHigh":-1,"stopLoss":null,"takeProfit1":"unknown","takeProfit2":0}]"""
+        val restored = SignalJournal.parseRecords(raw).single()
+        assertEquals("old-bad-tpsl", restored.id)
+        assertNull(restored.entryLow)
+        assertNull(restored.entryHigh)
+        assertNull(restored.stopLoss)
+        assertNull(restored.takeProfit1)
+        assertNull(restored.takeProfit2)
+    }
+
     @Test fun malformedJournalFailsClosedInsteadOfBecomingEmpty() {
         assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords("[{\"id\":") }
         assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords("[null]") }
