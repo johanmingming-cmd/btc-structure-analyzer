@@ -33,6 +33,22 @@ class RangeReversalDetectorTest {
         assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
     }
 
+    @Test fun rejectsOutOfOrderCandlesAtDetectorBoundary() {
+        val m15 = base15()
+        m15[m15.lastIndex] = m15[m15.lastIndex].copy(openTime = 10L, closeTime = 11L)
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
+    @Test fun rejectsDuplicateCandleTimestampsAtDetectorBoundary() {
+        val m5 = base5()
+        m5[m5.lastIndex] = m5[m5.lastIndex].copy(openTime = 18L, closeTime = 19L)
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, base15(), m5)
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
     @Test fun rejectsNonFiniteTolerance() {
         val result = RangeReversalDetector.detect(
             AdaptiveRegime.RANGE, base15(), base5(),
