@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Download closed Binance Spot history for the most liquid eligible USDT pairs."""
-import csv,json,os,re,time,urllib.error,urllib.parse,urllib.request
+import csv,json,os,re,shutil,time,urllib.error,urllib.parse,urllib.request
 from datetime import datetime,timezone
 from pathlib import Path
 
@@ -91,6 +91,10 @@ def main():
  end=int(datetime.now(timezone.utc).timestamp()*1000)
  start=end-DAYS*86400000
  OUT.mkdir(parents=True,exist_ok=True)
+ # OUT is a dedicated generated-data directory: remove stale coin folders and old manifest first.
+ for child in OUT.iterdir():
+  if child.is_dir(): shutil.rmtree(child)
+  elif child.name in ("manifest.json","manifest.json.tmp"): child.unlink()
  accepted=[]
  candidates=ranked_symbols()
  print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
@@ -114,8 +118,12 @@ def main():
   time.sleep(0.15)
  if len(accepted)<COUNT:
   raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
- print("Validated multi-coin universe: "+", ".join(accepted),flush=True)
- print(f"Downloaded {len(accepted)} coins x 3 intervals; closed Binance Spot candles, public endpoints, no API key.")
+ manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
+ temp=OUT/"manifest.json.tmp"
+ temp.write_text(json.dumps(manifest,indent=2)+"\\n",encoding="utf-8")
+ temp.replace(OUT/"manifest.json")
+ print("Validated fresh multi-coin universe: "+", ".join(accepted),flush=True)
+ print(f"Downloaded {len(accepted)} fresh coins x 3 intervals; public endpoints, no API key.")
 
 if __name__=="__main__":
  main()
