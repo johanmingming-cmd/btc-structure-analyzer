@@ -2,7 +2,6 @@ package com.btcstructureanalyzer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AdaptivePredictionEngineTest {
@@ -24,11 +23,12 @@ class AdaptivePredictionEngineTest {
         m5: List<Candle> = candles(300_000L)
     ) = AdaptiveEngineInput(decisionTime, h1, m15, m5)
 
-    @Test fun classifiesDirectionalPricePathAsTrendButDoesNotEmitSignalYet() {
+    @Test fun classifiesAndIntegratesConfirmedTrendSetup() {
         val result = AdaptivePredictionEngine.evaluate(input())
         assertEquals(AdaptiveRegime.TREND, result.regime)
-        assertEquals(AdaptiveDecision.WAIT, result.decision)
-        assertEquals(AdaptiveReason.WAIT_NO_SETUP, result.reason)
+        assertEquals(AdaptiveDecision.LONG, result.decision)
+        assertEquals(AdaptiveReason.SIGNAL_CONFIRMED, result.reason)
+        assertEquals(SelectedSetupFamily.TREND_CONTINUATION, result.setupFamily)
         assertNotNull(result.atrPercent)
     }
 
