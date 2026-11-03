@@ -222,8 +222,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 }
                 momentumConfirmedCount++
 
-                val volumeScore = (kotlin.math.ln(quoteVolume.coerceAtLeast(1.0)) * 2.0).toInt().coerceIn(0, 40)
-                val score = (60 + volumeScore / 4 + if (lastCandle.volume >= closed5m.dropLast(1).map { it.volume }.average()) 5 else 0).coerceIn(60, 85)
                 val directionText = if (sameBullish) "bullish" else "bearish"
                 val reason = "Konfirmasi: struktur Spot 1H + 15M searah $directionText, momentum candle 5M tertutup mendukung"
                 val supports = r15.swings.asSequence()
@@ -254,6 +252,20 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     nearbyLevelRejected++
                     continue
                 }
+                val previousAverageVolume = closed5m.dropLast(1).map { it.volume }.average()
+                val opposingRoomPct = if (sameBullish) {
+                    resistances.firstOrNull()?.let { ((it - lastPrice) / lastPrice) * 100.0 }
+                } else {
+                    supports.firstOrNull()?.let { ((lastPrice - it) / lastPrice) * 100.0 }
+                }
+                val score = calculateScannerScore(
+                    quoteVolume = quoteVolume,
+                    netMove = netMove,
+                    referenceOpen = closed5m.first().open,
+                    lastCandleVolume = lastCandle.volume,
+                    previousAverageVolume = previousAverageVolume,
+                    opposingRoomPct = opposingRoomPct
+                )
                 output.add(ScannedCoin(symbol, lastPrice, quoteVolume, r5.trend, r15.trend, r1h.trend, score, reason, supports, resistances))
             } catch (_: Exception) {
                 dataErrors++
@@ -341,4 +353,35 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         const val MAX_HISTORICAL_EVALUATIONS_PER_SCAN = 24
         const val HISTORICAL_LOOKUP_CONCURRENCY = 4
     }
+}
+
+
+/** A bounded ranking score, not a probability or trade win rate. */
+internal fun calculateScannerScore(
+    quoteVolume: Double,
+    netMove: Double,
+    referenceOpen: Double,
+    lastCandleVolume: Double,
+    previousAverageVolume: Double,
+    opposingRoomPct: Double?
+): Int {
+    val minLiquidity = 20_000_000.0
+    val maxLiquidity = 1_000_000_000.0
+    val liquidityScore = if (quoteVolume.isFinite() && quoteVolume > minLiquidity) {
+        (kotlin.math.ln(quoteVolume.coerceAtMost(maxLiquidity) / minLiquidity) /
+            kotlin.math.ln(maxLiquidity / minLiquidity) * 20.0).coerceIn(0.0, 20.0)
+    } else 0.0
+    val momentumPct = if (referenceOpen.isFinite() && referenceOpen > 0.0 && netMove.isFinite()) {
+        kotlin.math.abs(netMove / referenceOpen) * 100.0
+    } else 0.0
+    val momentumScore = (momentumPct / 0.5 * 15.0).coerceIn(0.0, 15.0)
+    val volumeRatio = if (previousAverageVolume.isFinite() && previousAverageVolume > 0.0 &&
+        lastCandleVolume.isFinite() && lastCandleVolume >= 0.0) {
+        lastCandleVolume / previousAverageVolume
+    } else 0.0
+    val volumeExpansionScore = ((volumeRatio - 1.0) / 2.0 * 10.0).coerceIn(0.0, 10.0)
+    val roomScore = opposingRoomPct?.takeIf { it.isFinite() && it > 0.0 }
+        ?.let { (it / 1.0 * 5.0).coerceIn(0.0, 5.0) } ?: 2.5
+    return (50.0 + liquidityScore + momentumScore + volumeExpansionScore + roomScore)
+        .toInt().coerceIn(50, 100)
 }
