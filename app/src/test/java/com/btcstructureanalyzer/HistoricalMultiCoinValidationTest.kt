@@ -268,4 +268,47 @@ class HistoricalMultiCoinValidationTest {
   }
  }
 
+
+ @Test fun compareLockedLookback16CandidateAgainstDefaultOnValidationOnly(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  val profiles=listOf(
+   "default" to AdaptiveEngineConfig(),
+   "locked_lookback_16" to AdaptiveEngineConfig(
+    rangeSetup=RangeDetectionConfig(boundaryLookback=16)
+   )
+  )
+  for((profile,config) in profiles){
+   for(horizon in listOf(12,36,72)){
+    val aggregates=MultiCoinMetricsAggregator()
+    for(symbol in symbols){
+     val coin=File(root,symbol)
+     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+     val validation=perCoin.getValue(symbol)[1]
+     require(validation.name=="validation") { "Candidate confirmation must use validation only" }
+     val result=WalkForwardEvaluator.evaluateSegment(
+      m5,listOf(horizon),validation.start,validation.end,evaluationStep=horizon
+     ){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
+       config
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+    for(row in aggregates.results()){
+     println("LOCKED_CANDIDATE_VALIDATION split=validation samplingStepBars=$horizon overlapping=false profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    }
+   }
+  }
+ }
+
 }
