@@ -96,11 +96,15 @@ object TrendSetupDetector {
         "Belum ada setup terkonfirmasi: ${reason.name}."
     )
 
-    private fun validClosedCandles(candles: List<Candle>): Boolean = candles.all { c ->
-        c.open.isFinite() && c.high.isFinite() && c.low.isFinite() && c.close.isFinite() &&
-            c.volume.isFinite() && c.open > 0.0 && c.high >= max(c.open, c.close) &&
-            c.low <= min(c.open, c.close) && c.low > 0.0 && c.volume >= 0.0
-    }
+    private fun validClosedCandles(candles: List<Candle>): Boolean =
+        candles.all { c ->
+            c.openTime >= 0L && c.closeTime > c.openTime &&
+                c.open.isFinite() && c.high.isFinite() && c.low.isFinite() && c.close.isFinite() &&
+                c.volume.isFinite() && c.open > 0.0 && c.high >= max(c.open, c.close) &&
+                c.low <= min(c.open, c.close) && c.low > 0.0 && c.volume >= 0.0
+        } && candles.zipWithNext().all { (previous, current) ->
+            current.openTime > previous.openTime && current.closeTime > previous.closeTime
+        }
 
     private fun atr(candles: List<Candle>, period: Int): Double? {
         if (candles.size < period + 1) return null
