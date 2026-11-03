@@ -10,8 +10,8 @@ object WalkForwardEvaluator {
   require(candles.size>=20);require(horizons.isNotEmpty()&&horizons.all{it>0}&&horizons.distinct().size==horizons.size);require(trainFraction in 0.1..0.9);require(evaluationStep>=1)
   require(candles.zipWithNext().all{(a,b)->b.openTime>a.openTime && b.closeTime>a.closeTime})
   require(candles.all{c->c.openTime>=0L&&c.closeTime>c.openTime&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&c.volume.isFinite()&&c.close>0.0&&c.open>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)&&c.low>0.0&&c.volume>=0.0})
-  val split=(candles.size*trainFraction).toInt().coerceIn(1,candles.size-1);val largest=horizons.max();val smallest=horizons.min()
-  val decisionIndices=(split until candles.size-smallest step evaluationStep).toList()
+  val split=(candles.size*trainFraction).toInt().coerceIn(1,candles.size-1);val smallest=horizons.min()
+  // Common decision window ends where the shortest horizon still has a known outcome.\n  // Longer horizons independently exclude decisions without a complete future outcome.\n  val decisionEndExclusive=candles.size-smallest\n  val decisionIndices=(split until decisionEndExclusive step evaluationStep).toList()
   val predictions=decisionIndices.associateWith{i->predictor(candles.subList(0,i+1).toList())}
   val rows=horizons.map{h->
    var evaluated=0;var hits=0;var misses=0;var neutral=0;var waits=0
@@ -28,6 +28,6 @@ object WalkForwardEvaluator {
    }
    HorizonEvaluation(h,candidates,evaluated,hits,misses,neutral,waits,if(candidates>0)evaluated.toDouble()/candidates*100.0 else null,if(evaluated>0)hits.toDouble()/evaluated*100.0 else null,signedReturns.takeIf{it.isNotEmpty()}?.average(),absReturns.maxOrNull())
   }
-  return WalkForwardEvaluation(split,split,candles.size-largest,rows,listOf("Prediktor hanya menerima data sampai candle keputusan; candle masa depan hanya dipakai untuk scoring.","Split kronologis; tidak ada pengacakan data.","trainFraction hanya menentukan awal periode evaluasi; tidak ada pelatihan model machine learning.","Setiap keputusan dihitung sekali lalu dinilai pada seluruh horizon yang relevan.","Evaluation step=$evaluationStep candle; jarak sampling mengurangi beban komputasi, bukan mengubah horizon outcome.","Coverage adalah proporsi keputusan LONG/SHORT dari seluruh kandidat; WAIT dihitung terpisah.","Return diukur pada close horizon; tanpa TP/SL, fee, slippage, atau simulasi eksekusi.","Hit rate bukan probabilitas kemenangan dan tidak membuktikan performa live."))
+  return WalkForwardEvaluation(split,split,decisionEndExclusive,rows,listOf("Prediktor hanya menerima data sampai candle keputusan; candle masa depan hanya dipakai untuk scoring.","Split kronologis; tidak ada pengacakan data.","trainFraction hanya menentukan awal periode evaluasi; tidak ada pelatihan model machine learning.","testEndExclusive adalah batas akhir indeks keputusan; setiap horizon memiliki jumlah kandidat eligible sendiri.","Setiap keputusan dihitung sekali lalu dinilai pada seluruh horizon yang relevan.","Evaluation step=$evaluationStep candle; jarak sampling mengurangi beban komputasi, bukan mengubah horizon outcome.","Coverage adalah proporsi keputusan LONG/SHORT dari seluruh kandidat; WAIT dihitung terpisah.","Return diukur pada close horizon; tanpa TP/SL, fee, slippage, atau simulasi eksekusi.","Hit rate bukan probabilitas kemenangan dan tidak membuktikan performa live."))
  }
 }
