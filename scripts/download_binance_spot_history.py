@@ -3,7 +3,7 @@
 import csv,json,os,time,urllib.error,urllib.parse,urllib.request
 from datetime import datetime,timezone
 from pathlib import Path
-BASE="https://api.binance.com/api/v3/klines"
+BASE="https://data-api.binance.vision/api/v3/klines"
 INTERVALS={"1h":3600000,"15m":900000,"5m":300000}
 DAYS=int(os.environ.get("BTC_HISTORY_DAYS","90"));OUT=Path(os.environ.get("BTC_HISTORY_DIR","build/btc-history"));LIMIT=1000
 def page(interval,start,end):
@@ -14,6 +14,9 @@ def page(interval,start,end):
    with urllib.request.urlopen(req,timeout=30) as response:data=json.loads(response.read().decode("utf-8"))
    if not isinstance(data,list):raise RuntimeError(f"Unexpected Binance response: {data}")
    return data
+  except urllib.error.HTTPError as exc:
+   if exc.code not in (418,429,500,502,503,504) or attempt==4:raise
+   time.sleep(2*(attempt+1))
   except (urllib.error.URLError,TimeoutError,json.JSONDecodeError):
    if attempt==4:raise
    time.sleep(1.5*(attempt+1))
@@ -26,14 +29,13 @@ def download(interval,start,end):
   rows.extend(batch);next_cursor=int(batch[-1][0])+step
   if next_cursor<=cursor:raise RuntimeError(f"Pagination stalled for {interval}")
   cursor=next_cursor;time.sleep(0.15)
- # Drop the currently forming candle: its closeTime is not before the snapshot end.
  unique={int(row[0]):row for row in rows if int(row[6])<end};ordered=[unique[k] for k in sorted(unique)]
  for a,b in zip(ordered,ordered[1:]):
   if int(b[0])-int(a[0])!=step:raise RuntimeError(f"Gap in {interval}: {a[0]} -> {b[0]}")
  return ordered
 def main():
  OUT.mkdir(parents=True,exist_ok=True);end=int(datetime.now(timezone.utc).timestamp()*1000);start=end-DAYS*86400000
- print(f"Fetching BTCUSDT Spot klines: last {DAYS} days (closed candles only)")
+ print(f"Fetching BTCUSDT Spot klines from Binance public market-data endpoint: last {DAYS} days")
  for interval in INTERVALS:
   rows=download(interval,start,end)
   if len(rows)<100:raise RuntimeError(f"Insufficient {interval} candles: {len(rows)}")
