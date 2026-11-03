@@ -50,24 +50,39 @@ object SignalJournal {
     private const val PREFS = "btc_structure"
     private const val KEY = "signal_journal_v1"
     private const val BACKUP_KEY = "signal_journal_v1_backup"
+    private const val CORRUPT_BACKUP_KEY = "signal_journal_v1_corrupt_backup"
+    private const val RECOVERY_FLAG = "signal_journal_recovered_from_backup"
     private const val MAX_RECORDS = 500
     private val lock = Any()
 
     /** Strict read: malformed or partially corrupt journals are never converted to an empty list. */
     fun read(context: Context): List<SignalRecord> = synchronized(lock) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val raw = try {
-            when {
-                prefs.contains(KEY) -> prefs.getString(KEY, null)
+        try {
+            if (prefs.contains(KEY)) {
+                val primary = prefs.getString(KEY, null)
                     ?: throw IllegalStateException("Jurnal sinyal utama tidak memiliki nilai yang bisa dibaca.")
-                prefs.contains(BACKUP_KEY) -> prefs.getString(BACKUP_KEY, null)
-                    ?: throw IllegalStateException("Cadangan jurnal sinyal tidak memiliki nilai yang bisa dibaca.")
-                else -> "[]"
+                try {
+                    return@synchronized parseRecords(primary)
+                } catch (primaryError: Exception) {
+                    val backup = try { prefs.getString(BACKUP_KEY, null) } catch (_: ClassCastException) { null }
+                        ?: throw IllegalStateException("Jurnal utama rusak dan cadangan tidak tersedia. Data asli tidak diubah.", primaryError)
+                    val recovered = try { parseRecords(backup) } catch (backupError: Exception) {
+                        throw IllegalStateException("Jurnal utama dan cadangan sama-sama tidak valid. Data asli tidak diubah.", backupError)
+                    }
+                    prefs.edit().putBoolean(RECOVERY_FLAG, true).commit()
+                    return@synchronized recovered
+                }
             }
+            if (prefs.contains(BACKUP_KEY)) {
+                val backup = prefs.getString(BACKUP_KEY, null)
+                    ?: throw IllegalStateException("Cadangan jurnal sinyal tidak memiliki nilai yang bisa dibaca.")
+                return@synchronized parseRecords(backup)
+            }
+            emptyList()
         } catch (error: ClassCastException) {
             throw IllegalStateException("Format penyimpanan jurnal tidak valid. Data lama tidak diubah.", error)
         }
-        parseRecords(raw)
     }
 
     /** Pure codec exposed for deterministic unit tests. */
@@ -215,14 +230,25 @@ object SignalJournal {
     private fun writeLocked(context: Context, records: List<SignalRecord>) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         // Refuse to replace a damaged primary journal. This preserves the original bytes for recovery.
+        var damagedPrimary: String? = null
         if (prefs.contains(KEY)) {
             val current = try { prefs.getString(KEY, null) } catch (error: ClassCastException) {
                 throw IllegalStateException("Jurnal utama bukan teks. Data yang ada tidak ditimpa.", error)
             } ?: throw IllegalStateException("Jurnal utama tidak dapat dibaca. Data yang ada tidak ditimpa.")
-            parseRecords(current)
+            try {
+                parseRecords(current)
+            } catch (primaryError: Exception) {
+                val backup = try { prefs.getString(BACKUP_KEY, null) } catch (_: ClassCastException) { null }
+                    ?: throw IllegalStateException("Jurnal utama rusak dan cadangan tidak tersedia. Data yang ada tidak ditimpa.", primaryError)
+                parseRecords(backup)
+                damagedPrimary = current
+            }
         }
         val encoded = serializeRecords(records)
-        check(prefs.edit().putString(KEY, encoded).putString(BACKUP_KEY, encoded).commit()) {
+        val editor = prefs.edit().putString(KEY, encoded).putString(BACKUP_KEY, encoded)
+            .putBoolean(RECOVERY_FLAG, false)
+        damagedPrimary?.let { editor.putString(CORRUPT_BACKUP_KEY, it) }
+        check(editor.commit()) {
             "Gagal menyimpan jurnal sinyal. Data sebelumnya tetap dipertahankan."
         }
     }
