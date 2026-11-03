@@ -311,4 +311,42 @@ class HistoricalMultiCoinValidationTest {
   }
  }
 
+
+ @Test fun evaluateFrozenDefaultOnFinalHoldoutOnce(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?: "build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  val aggregatesByHorizon=mutableMapOf<Int,MultiCoinMetricsAggregator>()
+  for(horizon in listOf(12,36,72)){
+   val aggregates=MultiCoinMetricsAggregator()
+   for(symbol in symbols){
+    val coin=File(root,symbol)
+    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+    val holdout=perCoin.getValue(symbol)[2]
+    require(holdout.name=="reserved_final_holdout") { "Final holdout segment identity changed" }
+    val result=WalkForwardEvaluator.evaluateSegment(
+     m5,listOf(horizon),holdout.start,holdout.end,evaluationStep=horizon
+    ){history->
+     val decisionTime=history.last().closeTime+1L
+     AdaptivePredictionEngine.evaluate(
+      AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)
+     ).decision
+    }
+    result.horizons.forEach{aggregates.add(it)}
+   }
+   aggregatesByHorizon[horizon]=aggregates
+  }
+  for((horizon,aggregates) in aggregatesByHorizon){
+   for(row in aggregates.results()){
+    println("FINAL_HOLDOUT_FROZEN_DEFAULT split=reserved_final_holdout samplingStepBars=$horizon overlapping=false profile=default horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   }
+  }
+ }
+
 }
