@@ -112,4 +112,89 @@ class SQLiteMigrationInfrastructureTest {
         prefs.edit().remove(key).commit()
         context.deleteDatabase(name)
     }
+
+    private fun sampleRecord(id: String, symbol: String, time: Long) = SignalRecord(
+        id = id, time = time, symbol = symbol, direction = "LONG",
+        price = 65000.0, entryLow = 64900.0, entryHigh = 65100.0,
+        stopLoss = 64000.0, takeProfit1 = 66000.0, takeProfit2 = 67000.0,
+        score = 70, supports = listOf(64000.0), resistances = listOf(66000.0)
+    )
+
+    @Test
+    fun actualMigrationPreservesRowsOrderDuplicateIdsAndBackup() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        val backupKey = "signal_journal_v1"
+        val records = listOf(
+            sampleRecord("same-id", "BTCUSDT", 1000L),
+            sampleRecord("same-id", "ETHUSDT", 1000L),
+            sampleRecord("third", "SOLUSDT", 2000L)
+        )
+        val rawBackup = SignalJournal.serializeRecords(records)
+        prefs.edit().putString(backupKey, rawBackup).commit()
+        val name = "journal_migration_actual.db"
+        context.deleteDatabase(name)
+
+        SignalJournalDatabase(context, name).use { store ->
+            val result = store.migrateIfNeeded(SignalJournal.parseRecords(prefs.getString(backupKey, null)!!))
+            assertTrue(result.migrated)
+            assertEquals(3, result.recordCount)
+            assertEquals(records, store.readAll())
+            assertEquals("ok", store.integrityCheck())
+            assertTrue(store.isMigrated())
+        }
+
+        assertEquals(rawBackup, prefs.getString(backupKey, null))
+        prefs.edit().remove(backupKey).commit()
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun actualMigrationIsIdempotentAfterDatabaseReopen() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_idempotent.db"
+        context.deleteDatabase(name)
+        val records = listOf(sampleRecord("one", "BTCUSDT", 1000L), sampleRecord("two", "ETHUSDT", 2000L))
+
+        SignalJournalDatabase(context, name).use { store ->
+            assertTrue(store.migrateIfNeeded(records).migrated)
+        }
+        SignalJournalDatabase(context, name).use { store ->
+            val second = store.migrateIfNeeded(records)
+            assertEquals(false, second.migrated)
+            assertEquals(2, second.recordCount)
+            assertEquals(records, store.readAll())
+            assertEquals("ok", store.integrityCheck())
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun failedMigrationRollsBackRowsAndMarkerThenRetrySucceeds() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_retry.db"
+        context.deleteDatabase(name)
+        val records = listOf(sampleRecord("one", "BTCUSDT", 1000L), sampleRecord("two", "ETHUSDT", 2000L))
+
+        SignalJournalDatabase(context, name).use { store ->
+            try {
+                store.migrateIfNeeded(records, SignalJournalDatabase.TestFault.THROW_AFTER_ROWS)
+                throw AssertionError("Injected migration failure was not thrown.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("Injected failure"))
+            }
+            assertEquals(false, store.isMigrated())
+            assertEquals(emptyList<SignalRecord>(), store.readAll())
+        }
+
+        SignalJournalDatabase(context, name).use { store ->
+            val retry = store.migrateIfNeeded(records)
+            assertTrue(retry.migrated)
+            assertEquals(2, retry.recordCount)
+            assertEquals(records, store.readAll())
+            assertTrue(store.isMigrated())
+        }
+        context.deleteDatabase(name)
+    }
+
 }
