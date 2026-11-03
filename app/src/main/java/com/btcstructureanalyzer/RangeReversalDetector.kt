@@ -58,7 +58,6 @@ object RangeReversalDetector {
         val volumeRatio = if (avgVolume > 0.0) last.volume / avgVolume else 0.0
         val maxSweep = atr15 * config.boundaryAtrTolerance
 
-        val bodyAtr = abs(last.close - last.open) / atr15
         val supportSwept = last.low < support
         val resistanceSwept = last.high > resistance
         val supportDepthOk = support - last.low <= maxSweep
@@ -67,7 +66,7 @@ object RangeReversalDetector {
         val resistanceReclaimed = last.close < resistance
         val supportWickOk = lowerWick / body >= config.minimumWickBodyRatio
         val resistanceWickOk = upperWick / body >= config.minimumWickBodyRatio
-        val bodyOk = bodyAtr >= config.minimumBodyAtr
+        val bodyOk = abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
         val supportReject = supportSwept && supportDepthOk && supportReclaimed && supportWickOk && bodyOk
         val resistanceReject = resistanceSwept && resistanceDepthOk && resistanceReclaimed && resistanceWickOk && bodyOk
         if (supportReject == resistanceReject) {
