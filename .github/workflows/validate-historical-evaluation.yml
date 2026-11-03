@@ -11,6 +11,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - feature/stage1-evaluation-10m-ui-cleanup
+      - design/prediction-lab-stage-b2
 
 permissions:
   contents: read
