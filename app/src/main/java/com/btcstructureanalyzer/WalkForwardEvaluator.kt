@@ -8,8 +8,12 @@ data class WalkForwardEvaluation(val trainEndExclusive:Int,val testStartInclusiv
 object WalkForwardEvaluator {
  fun evaluate(candles:List<Candle>,horizons:List<Int>,trainFraction:Double=0.60,evaluationStep:Int=1,predictor:(List<Candle>)->AdaptiveDecision):WalkForwardEvaluation {
   require(candles.size>=20);require(horizons.isNotEmpty()&&horizons.all{it>0}&&horizons.distinct().size==horizons.size);require(trainFraction in 0.1..0.9);require(evaluationStep>=1)
-  require(candles.zipWithNext().all{(a,b)->b.openTime>a.openTime && b.closeTime>a.closeTime})
-  require(candles.all{c->c.openTime>=0L&&c.closeTime>c.openTime&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&c.volume.isFinite()&&c.close>0.0&&c.open>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)&&c.low>0.0&&c.volume>=0.0})
+  val interval=candles[1].openTime-candles[0].openTime
+  require(interval>0L) { "Candle interval must be positive" }
+  require(candles.all{c->c.openTime>=0L&&c.closeTime-c.openTime==interval-1L&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&c.volume.isFinite()&&c.close>0.0&&c.open>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)&&c.low>0.0&&c.volume>=0.0})
+  require(candles.zipWithNext().all{(a,b)->b.openTime-a.openTime==interval && b.closeTime>a.closeTime}) {
+   "Candle series must be strictly ordered and gap-free"
+  }
   val split=(candles.size*trainFraction).toInt().coerceIn(1,candles.size-1);val smallest=horizons.min()
   // Common decision window ends where the shortest horizon still has a known outcome.
   // Longer horizons independently exclude decisions without a complete future outcome.
