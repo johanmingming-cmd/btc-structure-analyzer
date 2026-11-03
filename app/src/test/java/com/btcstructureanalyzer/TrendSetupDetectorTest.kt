@@ -59,6 +59,16 @@ class TrendSetupDetectorTest {
         }
     }
 
+    @Test fun rejectsInvertedHighLowRange() {
+        val fifteen = series(35).toMutableList()
+        fifteen[10] = fifteen[10].copy(high = 99.0, low = 100.0)
+        val result = TrendSetupDetector.detect(
+            AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG, fifteen, series(20)
+        )
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(SetupWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
     @Test fun rejectsOutOfOrderCandlesAtDetectorBoundary() {
         val fifteen = series(35).toMutableList()
         fifteen[fifteen.lastIndex] = fifteen[fifteen.lastIndex].copy(openTime = 10L, closeTime = 11L)
