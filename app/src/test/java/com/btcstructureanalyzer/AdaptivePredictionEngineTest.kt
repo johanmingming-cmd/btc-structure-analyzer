@@ -22,6 +22,19 @@ class AdaptivePredictionEngineTest {
         m15: List<Candle> = candles(900_000L),
         m5: List<Candle> = candles(300_000L)
     ) = AdaptiveEngineInput(decisionTime, h1, m15, m5)
+    private fun mixedEfficiencyCandles(interval: Long): List<Candle> {
+        val count = 60
+        val start = decisionTime - interval * count
+        var previousClose = 100.0
+        return (0 until count).map { i ->
+            val open = previousClose
+            val delta = if (i % 2 == 0) 1.0 else -0.5
+            val close = open + delta
+            previousClose = close
+            Candle(start + i * interval, open, maxOf(open, close) + 0.1,
+                minOf(open, close) - 0.1, close, 1000.0, start + i * interval + interval - 1)
+        }
+    }
 
     @Test fun classifiesAndIntegratesConfirmedTrendSetup() {
         val result = AdaptivePredictionEngine.evaluate(input())
@@ -91,6 +104,17 @@ class AdaptivePredictionEngineTest {
         } catch (_: IllegalArgumentException) {
             // Expected: invalid configuration must never enter regime classification.
         }
+    }
+
+    @Test fun explainsWhyTransitionRegimeIsHeldAsWait() {
+        val result = AdaptivePredictionEngine.evaluate(
+            input(h1 = mixedEfficiencyCandles(3_600_000L))
+        )
+        assertEquals(AdaptiveRegime.TRANSITION, result.regime)
+        assertEquals(AdaptiveDecision.WAIT, result.decision)
+        assertEquals(AdaptiveReason.WAIT_REGIME_UNCLEAR, result.reason)
+        assertEquals(true, result.explanation.contains("TRANSITION_EFFICIENCY_BETWEEN_RANGE_AND_TREND"))
+        assertNotNull(result.efficiencyRatio)
     }
 
 }
