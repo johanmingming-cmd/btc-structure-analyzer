@@ -302,7 +302,7 @@ class SQLiteMigrationInfrastructureTest {
             } catch (expected: IllegalStateException) {
                 assertTrue(expected.message!!.contains("marker count mismatch"))
             }
-            assertTrue(store.isMigrated())
+            assertEquals(false, store.isMigrated())
             assertEquals(emptyList<SignalRecord>(), store.readAll())
         }
         context.deleteDatabase(name)
