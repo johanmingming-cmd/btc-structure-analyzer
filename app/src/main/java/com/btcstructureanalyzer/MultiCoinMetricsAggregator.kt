@@ -50,7 +50,7 @@ class MultiCoinMetricsAggregator {
             coveragePercent = if (total.candidates > 0) total.evaluated * 100.0 / total.candidates else null,
             hitRatePercent = if (total.evaluated > 0) total.hits * 100.0 / total.evaluated else null,
             meanSignedReturnPercent = if (total.evaluated > 0) total.signedReturnSum / total.evaluated else null,
-            maxAbsoluteReturnPercent = if (total.candidates > 0) total.maxAbsoluteReturn else null
+            maxAbsoluteReturnPercent = if (total.evaluated > 0) total.maxAbsoluteReturn else null
         )
     }
 }
