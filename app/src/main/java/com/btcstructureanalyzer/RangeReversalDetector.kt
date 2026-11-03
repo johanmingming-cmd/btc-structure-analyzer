@@ -73,6 +73,7 @@ object RangeReversalDetector {
         if (supportReject == resistanceReject) {
             val detail = when {
                 supportReject && resistanceReject -> "AMBIGUOUS_BOTH_BOUNDARIES_REJECTED"
+                supportSwept && resistanceSwept -> "BOTH_BOUNDARIES_SWEPT"
                 !supportSwept && !resistanceSwept -> "NO_BOUNDARY_SWEEP"
                 supportSwept && !supportDepthOk -> "SUPPORT_SWEEP_TOO_DEEP"
                 resistanceSwept && !resistanceDepthOk -> "RESISTANCE_SWEEP_TOO_DEEP"
