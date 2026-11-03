@@ -99,7 +99,30 @@ object SignalJournal {
                     return value.takeIf { it.isNotBlank() } ?: default
                 }
                 fun optionalString(key: String): String? = stringValue(key)
-                val time = o.optLong("time", 0L)
+                fun requiredLong(key: String): Long {
+                    val raw = o.opt(key)
+                    require(raw is Number) { "Journal field '$key' at index $i is not a number." }
+                    val number = raw.toDouble()
+                    require(number.isFinite() && number % 1.0 == 0.0 &&
+                        number >= Long.MIN_VALUE.toDouble() && number <= Long.MAX_VALUE.toDouble()) {
+                        "Journal field '$key' at index $i is not a valid integer."
+                    }
+                    return raw.toLong()
+                }
+                fun optionalLong(key: String): Long? {
+                    if (!o.has(key) || o.isNull(key)) return null
+                    val value = requiredLong(key)
+                    require(value > 0L) { "Journal field '$key' at index $i must be positive." }
+                    return value
+                }
+                fun requiredInt(key: String): Int {
+                    val value = requiredLong(key)
+                    require(value in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+                        "Journal field '$key' at index $i is outside the integer range."
+                    }
+                    return value.toInt()
+                }
+                val time = requiredLong("time")
                 val symbol = stringValue("symbol").orEmpty()
                 val direction = stringValue("direction").orEmpty()
                 val entryLow = requiredPrice("entryLow")
@@ -112,22 +135,22 @@ object SignalJournal {
                     direction=direction, price=requiredPrice("price"),
                     entryLow=entryLow, entryHigh=entryHigh,
                     stopLoss=requiredPrice("stopLoss"), takeProfit1=requiredPrice("takeProfit1"),
-                    takeProfit2=requiredPrice("takeProfit2"), score=o.optInt("score"),
+                    takeProfit2=requiredPrice("takeProfit2"), score=requiredInt("score"),
                     supports=levels("supports"), resistances=levels("resistances"),
                     price10m=optionalPrice("price10m"), price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
                     result10m=stringValue("result10m", "PENDING")!!, result15m=stringValue("result15m", "PENDING")!!, result30m=stringValue("result30m", "PENDING")!!,
                     result60m=stringValue("result60m", "PENDING")!!,
                     entryStatus=stringValue("entryStatus", "BELUM DICEK")!!,
-                    evaluationTime10m=o.optLong("evaluationTime10m").takeIf { o.has("evaluationTime10m") && !o.isNull("evaluationTime10m") && it > 0L },
-                    evaluationTime15m=o.optLong("evaluationTime15m").takeIf { o.has("evaluationTime15m") && !o.isNull("evaluationTime15m") && it > 0L },
-                    evaluationTime30m=o.optLong("evaluationTime30m").takeIf { o.has("evaluationTime30m") && !o.isNull("evaluationTime30m") && it > 0L },
-                    evaluationTime60m=o.optLong("evaluationTime60m").takeIf { o.has("evaluationTime60m") && !o.isNull("evaluationTime60m") && it > 0L },
+                    evaluationTime10m=optionalLong("evaluationTime10m"),
+                    evaluationTime15m=optionalLong("evaluationTime15m"),
+                    evaluationTime30m=optionalLong("evaluationTime30m"),
+                    evaluationTime60m=optionalLong("evaluationTime60m"),
                     priceSource10m=optionalString("priceSource10m"),
                     priceSource15m=optionalString("priceSource15m"),
                     priceSource30m=optionalString("priceSource30m"),
                     priceSource60m=optionalString("priceSource60m"),
                     tradeOutcome=stringValue("tradeOutcome", "PENDING")!!,
-                    tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
+                    tradeOutcomeTime=optionalLong("tradeOutcomeTime"),
                     cohort=stringValue("cohort", "LEGACY")!!
                 ).also { record ->
                     require(record.time > 0L && record.symbol.isNotBlank() && record.direction.isNotBlank()) {
