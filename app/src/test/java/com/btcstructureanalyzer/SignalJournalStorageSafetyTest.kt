@@ -74,4 +74,31 @@ class SignalJournalStorageSafetyTest {
         }
     }
 
+
+    @Test
+    fun everyRequiredPriceFieldMustBeFiniteAndPositive() {
+        val valid = """[{"id":"valid","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000,"entryLow":64900,"entryHigh":65100,"stopLoss":64000,"takeProfit1":66000,"takeProfit2":67000,"score":70}]"""
+        val values = mapOf("price" to "65000", "entryLow" to "64900", "entryHigh" to "65100", "stopLoss" to "64000", "takeProfit1" to "66000", "takeProfit2" to "67000")
+        values.forEach { (field, value) ->
+            val missing = valid.replace("\"$field\":$value", "")
+            assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords(missing) }
+            val invalid = valid.replace("\"$field\":$value", "\"$field\":-1")
+            assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords(invalid) }
+        }
+    }
+
+    @Test
+    fun invertedEntryRangeFailsClosed() {
+        val raw = """[{"id":"bad-range","time":1000,"symbol":"BTCUSDT","direction":"LONG","price":65000,"entryLow":65100,"entryHigh":64900,"stopLoss":64000,"takeProfit1":66000,"takeProfit2":67000,"score":70}]"""
+        assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords(raw) }
+    }
+
+    @Test
+    fun invalidRecordIdentityFailsClosed() {
+        val noTimestamp = """[{"id":"bad-time","time":0,"symbol":"BTCUSDT","direction":"LONG","price":65000,"entryLow":64900,"entryHigh":65100,"stopLoss":64000,"takeProfit1":66000,"takeProfit2":67000,"score":70}]"""
+        val noDirection = """[{"id":"bad-direction","time":1000,"symbol":"BTCUSDT","direction":"","price":65000,"entryLow":64900,"entryHigh":65100,"stopLoss":64000,"takeProfit1":66000,"takeProfit2":67000,"score":70}]"""
+        assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords(noTimestamp) }
+        assertThrows(IllegalStateException::class.java) { SignalJournal.parseRecords(noDirection) }
+    }
+
 }
