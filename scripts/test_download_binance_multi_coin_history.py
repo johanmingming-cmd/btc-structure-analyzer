@@ -9,6 +9,12 @@ DOWNLOADER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DOWNLOADER)
 
 
+class HistoryWindowTests(unittest.TestCase):
+    def test_minimum_bars_scale_with_requested_days(self):
+        self.assertEqual(DOWNLOADER.minimum_bars(90), {"1h": 2052, "15m": 8208, "5m": 24624})
+        self.assertEqual(DOWNLOADER.minimum_bars(180), {"1h": 4104, "15m": 16416, "5m": 49248})
+
+
 class KlineValidationTests(unittest.TestCase):
     def setUp(self):
         self.valid = [0, "100.0", "105.0", "95.0", "102.0", "12.5", 299999]
