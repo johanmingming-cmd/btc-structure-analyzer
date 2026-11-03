@@ -14,7 +14,7 @@ MINIMUM=minimum_bars(DAYS)
 COUNT=int(os.environ.get("MULTI_HISTORY_COINS","10"))
 OUT=Path(os.environ.get("MULTI_HISTORY_DIR","build/multi-coin-history"))
 LIMIT=1000
-EXCLUDED={"USDC","FDUSD","TUSD","USDP","DAI","USDE","USDS","USD1","U","BUSD","EUR","TRY","BRL","GBP","JPY","UST"}
+EXCLUDED={"USDC","FDUSD","TUSD","USDP","DAI","USDE","USDS","USD1","U","BUSD","EUR","TRY","BRL","GBP","JPY","UST","RLUSD","PYUSD","USDD","EURC","AEUR","EURI"}
 
 def get_json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"PredictionLab-MultiCoin-Validator/1.0"})
@@ -32,6 +32,12 @@ def get_json(url):
    time.sleep(1.5*(attempt+1))
 
 def ranked_symbols():
+ fixed=os.environ.get("MULTI_HISTORY_SYMBOLS","").strip()
+ if fixed:
+  symbols=[item.strip().upper() for item in fixed.split(",") if item.strip()]
+  if len(symbols)!=len(set(symbols)) or any(not symbol.endswith("USDT") for symbol in symbols):
+   raise ValueError("MULTI_HISTORY_SYMBOLS must be unique USDT Spot symbols")
+  return symbols
  tickers=get_json(BASE+"/ticker/24hr")
  deny=re.compile(r"(UP|DOWN|BULL|BEAR|[0-9]+[LS])$")
  ranked=[]
@@ -128,7 +134,8 @@ def write_dataset(root, symbol, datasets):
 def main():
  # Resolve the live universe before touching existing history; preserve old data on any failed refresh.
  candidates=ranked_symbols()
- end=int(datetime.now(timezone.utc).timestamp()*1000)
+ end=int(os.environ.get("MULTI_HISTORY_END_TIME_MS", "0") or 0) or int(datetime.now(timezone.utc).timestamp()*1000)
+ if end<=0: raise ValueError("MULTI_HISTORY_END_TIME_MS must be a positive Unix millisecond timestamp")
  start=end-DAYS*86400000
  OUT.parent.mkdir(parents=True,exist_ok=True)
  staging=OUT.with_name(OUT.name+".staging")
@@ -142,6 +149,7 @@ def main():
  staging.mkdir(parents=True)
  try:
   accepted=[]
+  dataset_coverage={}
   print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
   for symbol in candidates:
    if len(accepted)>=COUNT:
@@ -155,6 +163,7 @@ def main():
      datasets[interval]=rows
     write_dataset(staging,symbol,datasets)
     accepted.append(symbol)
+    dataset_coverage[symbol]={interval:{"bars":len(rows),"firstOpenTimeMs":int(rows[0][0]),"lastCloseTimeMs":int(rows[-1][6])} for interval,rows in datasets.items()}
     counts=", ".join(f"{interval}={len(rows)}" for interval,rows in datasets.items())
     print(f"ACCEPTED {symbol}: {counts}",flush=True)
    except (ValueError,RuntimeError,OSError,TimeoutError) as exc:
@@ -164,7 +173,7 @@ def main():
    time.sleep(0.15)
   if len(accepted)<COUNT:
    raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
-  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"requestedDays":DAYS,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
+  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"requestedDays":DAYS,"universeSelection":"explicit MULTI_HISTORY_SYMBOLS" if os.environ.get("MULTI_HISTORY_SYMBOLS","").strip() else "current 24h USDT quote-volume ranking at download time","symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM,"datasetCoverage":dataset_coverage}
   temp=staging/"manifest.json.tmp"
   temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
   temp.replace(staging/"manifest.json")
