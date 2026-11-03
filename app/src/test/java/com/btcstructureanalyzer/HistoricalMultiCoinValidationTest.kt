@@ -115,7 +115,7 @@ class HistoricalMultiCoinValidationTest {
   for(symbol in symbols){
    val coin=File(root,symbol)
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-   val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+   val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
     AdaptivePredictionEngine.evaluate(
      AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
@@ -151,7 +151,7 @@ class HistoricalMultiCoinValidationTest {
    for(symbol in symbols){
     val coin=File(root,symbol)
     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-    val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+    val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
      val decisionTime=history.last().closeTime+1L
      AdaptivePredictionEngine.evaluate(
       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),config
