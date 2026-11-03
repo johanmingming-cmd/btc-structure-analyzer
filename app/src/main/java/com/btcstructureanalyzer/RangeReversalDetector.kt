@@ -96,7 +96,7 @@ object RangeReversalDetector {
         c.openTime >= 0L && c.closeTime > c.openTime &&
             c.open.isFinite() && c.high.isFinite() && c.low.isFinite() && c.close.isFinite() &&
             c.volume.isFinite() && c.open > 0.0 && c.low > 0.0 &&
-            c.high >= max(c.open, c.close) && c.low <= min(c.open, c.close) && c.volume >= 0.0
+            c.high >= max(c.open, c.close) && c.low <= min(c.open, c.close) && c.high >= c.low && c.volume >= 0.0
     } && candles.zipWithNext().all { (previous, current) ->
         current.openTime > previous.openTime && current.closeTime > previous.closeTime
     }
