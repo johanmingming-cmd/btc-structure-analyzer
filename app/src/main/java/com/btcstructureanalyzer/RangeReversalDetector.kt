@@ -25,7 +25,7 @@ data class RangeDetectionResult(
     val explanation: String
 )
 
-/** Reversal is allowed only after a boundary sweep/rejection and a separate closed 5m trigger. */
+/** Reversal is allowed only after a shallow boundary sweep/rejection and a separate closed 5m trigger. */
 object RangeReversalDetector {
     fun detect(
         regime: AdaptiveRegime,
@@ -35,8 +35,10 @@ object RangeReversalDetector {
     ): RangeDetectionResult {
         if (regime != AdaptiveRegime.RANGE) return wait(RangeWaitReason.REGIME_NOT_RANGE)
         if (config.atrPeriod < 2 || config.boundaryLookback < 5 ||
-            config.boundaryAtrTolerance <= 0.0 || config.minimumWickBodyRatio <= 0.0 ||
-            config.minimumVolumeRatio < 0.0 || config.minimumBodyAtr < 0.0) {
+            !config.boundaryAtrTolerance.isFinite() || config.boundaryAtrTolerance <= 0.0 ||
+            !config.minimumWickBodyRatio.isFinite() || config.minimumWickBodyRatio <= 0.0 ||
+            !config.minimumVolumeRatio.isFinite() || config.minimumVolumeRatio < 0.0 ||
+            !config.minimumBodyAtr.isFinite() || config.minimumBodyAtr < 0.0) {
             return wait(RangeWaitReason.INSUFFICIENT_DATA)
         }
         if (candles15m.size < max(config.atrPeriod + 1, config.boundaryLookback + 1) ||
@@ -53,15 +55,16 @@ object RangeReversalDetector {
         val upperWick = last.high - max(last.open, last.close)
         val avgVolume = prior.takeLast(min(10, prior.size)).map { it.volume }.average()
         val volumeRatio = if (avgVolume > 0.0) last.volume / avgVolume else 0.0
+        val maxSweep = atr15 * config.boundaryAtrTolerance
 
-        val supportReject = last.low < support && last.close > support &&
-            lowerWick / body >= config.minimumWickBodyRatio &&
+        val supportReject = last.low < support && support - last.low <= maxSweep &&
+            last.close > support && lowerWick / body >= config.minimumWickBodyRatio &&
             abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        val resistanceReject = last.high > resistance && last.close < resistance &&
-            upperWick / body >= config.minimumWickBodyRatio &&
+        val resistanceReject = last.high > resistance && last.high - resistance <= maxSweep &&
+            last.close < resistance && upperWick / body >= config.minimumWickBodyRatio &&
             abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        if (supportReject == resistanceReject) return wait(RangeWaitReason.NO_BOUNDARY_REJECTION)
-        if (volumeRatio < config.minimumVolumeRatio) return wait(RangeWaitReason.NO_BOUNDARY_REJECTION)
+        if (supportReject == resistanceReject || volumeRatio < config.minimumVolumeRatio)
+            return wait(RangeWaitReason.NO_BOUNDARY_REJECTION)
 
         val direction = if (supportReject) AdaptiveDecision.LONG else AdaptiveDecision.SHORT
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(RangeWaitReason.INSUFFICIENT_DATA)
