@@ -12,4 +12,18 @@ class WalkForwardEvaluatorTest {
   val r=WalkForwardEvaluator.evaluate(series(30),listOf(2),0.5){AdaptiveDecision.WAIT};val h=r.horizons.single()
   assertEquals(0,h.evaluated);assertEquals(null,h.hitRatePercent);assertEquals(0.0,h.coveragePercent!!,0.0001);assertEquals(h.candidateCount,h.waitCount)
  }
+ @Test fun evaluatesEachDecisionOnlyOnceAcrossAllHorizons(){
+  var calls=0
+  val data=series(50)
+  val result=WalkForwardEvaluator.evaluate(data,listOf(1,3,6),0.5,evaluationStep=2){
+   calls++
+   AdaptiveDecision.LONG
+  }
+  val expected=(25 until data.size-1 step 2).count()
+  assertEquals(expected,calls)
+  assertEquals(expected,result.horizons.first().candidateCount)
+  assertTrue(result.horizons[1].candidateCount<=result.horizons[0].candidateCount)
+  assertTrue(result.horizons[2].candidateCount<=result.horizons[1].candidateCount)
+ }
+
 }
