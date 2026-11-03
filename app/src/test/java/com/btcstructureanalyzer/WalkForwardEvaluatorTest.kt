@@ -8,6 +8,15 @@ class WalkForwardEvaluatorTest {
   val seen=mutableListOf<Int>();val r=WalkForwardEvaluator.evaluate(series(40),listOf(1,3),0.5){h->seen.add(h.size);AdaptiveDecision.LONG}
   assertTrue(seen.all{it<40});assertEquals(20,r.testStartInclusive);assertEquals(100.0,r.horizons.first().hitRatePercent!!,0.0001);assertEquals(100.0,r.horizons.first().coveragePercent!!,0.0001);assertEquals(0,r.horizons.first().waitCount)
  }
+ @Test fun reportsCommonDecisionWindowAndHorizonSpecificCandidateCounts(){
+  val data=series(50)
+  val result=WalkForwardEvaluator.evaluate(data,listOf(1,3,6),0.5,evaluationStep=2){AdaptiveDecision.LONG}
+  assertEquals(49,result.testEndExclusive)
+  assertEquals(12,result.horizons[0].candidateCount)
+  assertEquals(11,result.horizons[1].candidateCount)
+  assertEquals(10,result.horizons[2].candidateCount)
+ }
+
  @Test fun waitPredictionsAreExcludedFromHitRateButCountedInCoverage(){
   val r=WalkForwardEvaluator.evaluate(series(30),listOf(2),0.5){AdaptiveDecision.WAIT};val h=r.horizons.single()
   assertEquals(0,h.evaluated);assertEquals(null,h.hitRatePercent);assertEquals(0.0,h.coveragePercent!!,0.0001);assertEquals(h.candidateCount,h.waitCount)
