@@ -111,7 +111,15 @@ internal class SignalJournalDatabase(
         return result
     }
 
-    fun isMigrated(): Boolean = migrationMarker(readableDatabase) != null
+    /** True only when the completion marker is valid and agrees with the stored row count. */
+    fun isMigrated(): Boolean {
+        val db = readableDatabase
+        val marker = migrationMarker(db) ?: return false
+        val parts = marker.split(":")
+        if (parts.size != 2 || parts[0].toIntOrNull() != DATABASE_VERSION) return false
+        val markedCount = parts[1].toIntOrNull() ?: return false
+        return markedCount >= 0 && markedCount == rowCount(db)
+    }
 
     fun integrityCheck(): String =
         readableDatabase.rawQuery("PRAGMA integrity_check", null).use { cursor ->
