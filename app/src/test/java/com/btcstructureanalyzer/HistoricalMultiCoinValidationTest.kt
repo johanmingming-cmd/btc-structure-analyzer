@@ -5,6 +5,24 @@ import java.io.File
 
 /** Multi-coin historical research; every selected pair must have complete closed-candle data. */
 class HistoricalMultiCoinValidationTest {
+
+ private data class TimeSegment(val name:String,val start:Long,val end:Long)
+ private fun segments(candles:List<Candle>):List<TimeSegment>{
+  val start=candles.first().openTime
+  val end=candles.last().closeTime+1L
+  val duration=end-start
+  val warmup=start+50L*300000L
+  val developmentEnd=start+(duration*0.60).toLong()
+  val validationEnd=start+(duration*0.80).toLong()
+  require(warmup<developmentEnd&&developmentEnd<validationEnd&&validationEnd<end)
+  return listOf(
+   TimeSegment("development",warmup,developmentEnd),
+   TimeSegment("validation",developmentEnd,validationEnd),
+   TimeSegment("final_holdout",validationEnd,end)
+  )
+ }
+ private fun developmentWindow(candles:List<Candle>):TimeSegment = segments(candles).first()
+
  private fun requireValidSeries(candles:List<Candle>,interval:Long,label:String){
   require(candles.zipWithNext().all{(a,b)->b.openTime-a.openTime==interval}) { "Candle gap in $label" }
   require(candles.all{c->
@@ -59,7 +77,7 @@ class HistoricalMultiCoinValidationTest {
    requireValidSeries(m15,900000L,"${coin.name} 15m")
    requireValidSeries(m5,300000L,"${coin.name} 5m")
    val diagnostics=mutableMapOf<String,Int>()
-   val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+   val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
     val engine=AdaptivePredictionEngine.evaluate(AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history))
     val key="${engine.regime}|${engine.reason}|${engine.explanation}"
@@ -162,7 +180,7 @@ class HistoricalMultiCoinValidationTest {
     for(symbol in symbols){
      val coin=File(root,symbol)
      val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-     val result=WalkForwardEvaluator.evaluate(m5,listOf(horizon),0.60,evaluationStep=horizon){history->
+     val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(horizon),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=horizon){history->
       val decisionTime=history.last().closeTime+1L
       AdaptivePredictionEngine.evaluate(
        AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),config
@@ -176,4 +194,37 @@ class HistoricalMultiCoinValidationTest {
    }
   }
  }
+ @Test fun reportDefaultBaselineAcrossDevelopmentValidationAndFinalHoldout(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  for(segmentIndex in 0..2){
+   val segmentName=perCoin.getValue(symbols.first())[segmentIndex].name
+   val aggregates=MultiCoinMetricsAggregator()
+   for(symbol in symbols){
+    val coin=File(root,symbol)
+    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+    val segment=perCoin.getValue(symbol)[segmentIndex]
+    for(horizon in listOf(12,36,72)){
+     val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(horizon),segment.start,segment.end,evaluationStep=horizon){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+   }
+   for(row in aggregates.results()){
+    println("THREE_WAY_BASELINE segment=$segmentName horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   }
+  }
+ }
+
 }
