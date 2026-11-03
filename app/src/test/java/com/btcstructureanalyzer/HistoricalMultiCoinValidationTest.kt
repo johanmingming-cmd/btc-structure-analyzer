@@ -47,11 +47,16 @@ class HistoricalMultiCoinValidationTest {
    requireValidSeries(h1,3600000L,"${coin.name} 1h")
    requireValidSeries(m15,900000L,"${coin.name} 15m")
    requireValidSeries(m5,300000L,"${coin.name} 5m")
+   val diagnostics=mutableMapOf<String,Int>()
    val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
-    AdaptivePredictionEngine.evaluate(AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)).decision
+    val engine=AdaptivePredictionEngine.evaluate(AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history))
+    val key="${engine.regime}|${engine.reason}|${engine.explanation}"
+    diagnostics[key]=(diagnostics[key]?:0)+1
+    engine.decision
    }
    println("MULTI_COIN_DATASET symbol=${coin.name} bars1h=${h1.size} bars15m=${m15.size} bars5m=${m5.size}")
+   diagnostics.toSortedMap().forEach{(reason,count)->println("MULTI_COIN_DIAGNOSTIC symbol=${coin.name} count=$count state=$reason")}
    result.horizons.forEach{row->
     println("MULTI_COIN_METRIC symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
     aggregates.add(row)
