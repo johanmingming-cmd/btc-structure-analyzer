@@ -1,8 +1,5 @@
 name: Validate Historical Multi-Coin Evaluation
 on:
-  push:
-    branches:
-      - implementation/prediction-lab-stage-b3-core
   workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
