@@ -26,4 +26,15 @@ class WalkForwardEvaluatorTest {
   assertTrue(result.horizons[2].candidateCount<=result.horizons[1].candidateCount)
  }
 
+ @Test fun rejectsInvalidCandleTimeOrdering(){
+  val data=series(30).toMutableList()
+  data[12]=data[12].copy(closeTime=data[12].openTime)
+  try{
+   WalkForwardEvaluator.evaluate(data,listOf(1),0.5){AdaptiveDecision.LONG}
+   throw AssertionError("Invalid candle time range must be rejected")
+  }catch(_:IllegalArgumentException){
+   // Expected.
+  }
+ }
+
 }
