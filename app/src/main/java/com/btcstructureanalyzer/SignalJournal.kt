@@ -90,6 +90,10 @@ object SignalJournal {
                     }
                     return value
                 }
+                fun optionalString(key: String): String? {
+                    if (!o.has(key) || o.isNull(key)) return null
+                    return o.optString(key).takeIf { it.isNotBlank() }
+                }
                 val time = o.optLong("time", 0L)
                 val symbol = o.optString("symbol")
                 val direction = o.optString("direction")
@@ -113,10 +117,10 @@ object SignalJournal {
                     evaluationTime15m=o.optLong("evaluationTime15m").takeIf { o.has("evaluationTime15m") && !o.isNull("evaluationTime15m") && it > 0L },
                     evaluationTime30m=o.optLong("evaluationTime30m").takeIf { o.has("evaluationTime30m") && !o.isNull("evaluationTime30m") && it > 0L },
                     evaluationTime60m=o.optLong("evaluationTime60m").takeIf { o.has("evaluationTime60m") && !o.isNull("evaluationTime60m") && it > 0L },
-                    priceSource10m=o.optString("priceSource10m").takeIf { it.isNotBlank() },
-                    priceSource15m=o.optString("priceSource15m").takeIf { it.isNotBlank() },
-                    priceSource30m=o.optString("priceSource30m").takeIf { it.isNotBlank() },
-                    priceSource60m=o.optString("priceSource60m").takeIf { it.isNotBlank() },
+                    priceSource10m=optionalString("priceSource10m"),
+                    priceSource15m=optionalString("priceSource15m"),
+                    priceSource30m=optionalString("priceSource30m"),
+                    priceSource60m=optionalString("priceSource60m"),
                     tradeOutcome=o.optString("tradeOutcome", "PENDING"),
                     tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
                     cohort=o.optString("cohort", "LEGACY")
