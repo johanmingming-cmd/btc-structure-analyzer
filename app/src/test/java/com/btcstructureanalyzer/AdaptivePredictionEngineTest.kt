@@ -65,4 +65,22 @@ class AdaptivePredictionEngineTest {
         assertEquals(AdaptiveRegime.VOLATILITY_SHOCK, result.regime)
         assertEquals(AdaptiveReason.WAIT_VOLATILITY_SHOCK, result.reason)
     }
+    @Test fun rejectsMalformedCandleCloseTimestamp() {
+        val source = candles(3_600_000L).toMutableList()
+        source[30] = source[30].copy(closeTime = source[30].closeTime - 1L)
+        val result = AdaptivePredictionEngine.evaluate(input(h1 = source))
+        assertEquals(AdaptiveDecision.WAIT, result.decision)
+        assertEquals(AdaptiveReason.WAIT_DATA_INVALID, result.reason)
+    }
+
+    @Test fun rejectsNonFiniteRegimeThresholds() {
+        val invalid = AdaptiveEngineConfig(shockExpansionRatio = Double.NaN)
+        try {
+            AdaptivePredictionEngine.evaluate(input(), invalid)
+            throw AssertionError("NaN threshold must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected: invalid configuration must never enter regime classification.
+        }
+    }
+
 }

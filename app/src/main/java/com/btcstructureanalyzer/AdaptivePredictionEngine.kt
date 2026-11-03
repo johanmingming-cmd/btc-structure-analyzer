@@ -132,7 +132,8 @@ object AdaptivePredictionEngine {
         if (source.isEmpty()) return ValidatedSeries(emptyList(), AdaptiveReason.WAIT_INSUFFICIENT_HISTORY, null)
         val closed = source.filter { it.closeTime < decisionTime }.sortedBy { it.openTime }
         if (closed.any { c ->
-                !c.open.isFinite() || !c.high.isFinite() || !c.low.isFinite() || !c.close.isFinite() ||
+                c.openTime < 0L || c.closeTime != c.openTime + interval - 1L ||
+                    !c.open.isFinite() || !c.high.isFinite() || !c.low.isFinite() || !c.close.isFinite() ||
                     !c.volume.isFinite() || c.open <= 0.0 || c.low <= 0.0 || c.high <= 0.0 ||
                     c.close <= 0.0 || c.volume < 0.0 || c.high < max(c.open, c.close) ||
                     c.low > minOf(c.open, c.close) || c.high < c.low
