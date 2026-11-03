@@ -170,4 +170,35 @@ class SignalJournalCodecRoundTripTest {
             }
         }
     }
+
+    @Test
+    fun malformedRequiredIdentityAndNestedStructuresAreRejected() {
+        val valid = """[{
+            "id":"strict-identity","time":1700000000000,"symbol":"BTCUSDT","direction":"LONG",
+            "price":65000.0,"entryLow":64980.0,"entryHigh":65020.0,
+            "stopLoss":64800.0,"takeProfit1":65200.0,"takeProfit2":65400.0,
+            "score":80,"supports":[64500.0],"resistances":[65500.0]
+        }]"""
+        val malformed = listOf(
+            valid.replace("\"id\":\"strict-identity\"", "\"id\":\"   \""),
+            valid.replace("\"symbol\":\"BTCUSDT\"", "\"symbol\":\"\""),
+            valid.replace("\"direction\":\"LONG\"", "\"direction\":\"BUY\""),
+            valid.replace("\"time\":1700000000000", "\"time\":0"),
+            valid.replace("\"supports\":[64500.0]", "\"supports\":{}"),
+            valid.replace("\"supports\":[64500.0]", "\"supports\":[null]"),
+            valid.replace("\"resistances\":[65500.0]", "\"resistances\":[0]"),
+            """[null]""",
+            valid.replace("\"takeProfit2\":65400.0,", "")
+        )
+
+        malformed.forEach { raw ->
+            try {
+                SignalJournal.parseRecords(raw)
+                throw AssertionError("Malformed required field or nested structure must be rejected: $raw")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("existing data was left untouched"))
+            }
+        }
+    }
+
 }
