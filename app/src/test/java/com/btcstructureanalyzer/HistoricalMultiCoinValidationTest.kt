@@ -31,6 +31,13 @@ class HistoricalMultiCoinValidationTest {
   require(manifestJson.optInt("schemaVersion",-1)==1) { "Unsupported dataset manifest schema" }
   require(manifestJson.optString("source")=="Binance Spot public klines") { "Unexpected historical data source" }
   require(manifestJson.optInt("requestedCoins",0)>=10) { "Manifest must request at least 10 coins" }
+  val requestedDays=manifestJson.optInt("requestedDays",0)
+  require(requestedDays>=180) { "This validation requires at least 180 requested history days; found $requestedDays" }
+  val requestedStart=manifestJson.optLong("startTimeMs",0L)
+  val requestedEnd=manifestJson.optLong("endTimeMs",0L)
+  require(requestedStart>0L && requestedEnd>requestedStart) { "Invalid requested history window in manifest" }
+  val minimumSpan=(requestedDays*86400000.0*0.95).toLong()
+  val minimumBars=manifestJson.getJSONObject("minimumBars")
   val intervals=manifestJson.getJSONArray("intervals").let{array->(0 until array.length()).map{array.getString(it)}.toSet()}
   require(intervals==setOf("1h","15m","5m")) { "Manifest intervals must be exactly 1h, 15m and 5m" }
   val symbolsArray=manifestJson.getJSONArray("symbols")
@@ -43,7 +50,10 @@ class HistoricalMultiCoinValidationTest {
   val aggregates=MultiCoinMetricsAggregator()
   for(coin in coins){
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-   require(h1.size>1000 && m15.size>4000 && m5.size>12000) { "Insufficient history for ${coin.name}: ${h1.size}/${m15.size}/${m5.size}" }
+   require(h1.size>=minimumBars.getInt("1h") && m15.size>=minimumBars.getInt("15m") && m5.size>=minimumBars.getInt("5m")) { "Insufficient history for ${coin.name}: ${h1.size}/${m15.size}/${m5.size}" }
+   require(h1.first().openTime<=requestedStart+3600000L && h1.last().closeTime>=requestedEnd-minimumSpan) { "1h history does not span at least 95% of requested window for ${coin.name}" }
+   require(m15.first().openTime<=requestedStart+900000L && m15.last().closeTime>=requestedEnd-minimumSpan) { "15m history does not span at least 95% of requested window for ${coin.name}" }
+   require(m5.first().openTime<=requestedStart+300000L && m5.last().closeTime>=requestedEnd-minimumSpan) { "5m history does not span at least 95% of requested window for ${coin.name}" }
    requireValidSeries(h1,3600000L,"${coin.name} 1h")
    requireValidSeries(m15,900000L,"${coin.name} 15m")
    requireValidSeries(m5,300000L,"${coin.name} 5m")
