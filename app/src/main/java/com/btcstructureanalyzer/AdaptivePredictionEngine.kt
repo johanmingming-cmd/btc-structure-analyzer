@@ -97,8 +97,17 @@ object AdaptivePredictionEngine {
                 AdaptiveReason.WAIT_VOLATILITY_SHOCK, "Ekspansi volatilitas melewati ambang; sistem menahan sinyal.")
         }
         if (regime == AdaptiveRegime.TRANSITION || regime == AdaptiveRegime.UNKNOWN) {
+            val transitionDetail = when {
+                metrics.efficiency > 0.22 && metrics.efficiency < config.trendEfficiencyThreshold ->
+                    "TRANSITION_EFFICIENCY_BETWEEN_RANGE_AND_TREND"
+                metrics.efficiency >= config.trendEfficiencyThreshold &&
+                    abs(metrics.slopeAtr) < config.trendSlopeAtrThreshold ->
+                    "TRANSITION_TREND_SLOPE_BELOW_THRESHOLD"
+                else -> "TRANSITION_UNCLASSIFIED_BOUNDARY_CASE"
+            }
+            val diagnostic = "$transitionDetail|efficiency=${metrics.efficiency}|slopeAtr=${metrics.slopeAtr}"
             return result(input, h1, metrics, regime, AdaptiveDecision.WAIT,
-                AdaptiveReason.WAIT_REGIME_UNCLEAR, "Bukti trend/range bercampur; arah ditahan.")
+                AdaptiveReason.WAIT_REGIME_UNCLEAR, diagnostic)
         }
 
         val trend = if (regime == AdaptiveRegime.TREND) {
