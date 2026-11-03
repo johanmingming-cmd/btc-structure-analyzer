@@ -11,7 +11,7 @@ on:
         required: false
         type: string
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
     branches:
       - implementation/prediction-lab-stage-b3-core
 permissions:
