@@ -76,8 +76,8 @@ def download(symbol,interval,start,end):
    raise RuntimeError(f"Gap {symbol} {interval}: {previous[0]} -> {current[0]}")
  return ordered
 
-def write_dataset(symbol, datasets):
- folder=OUT/(symbol+".tmp")
+def write_dataset(root, symbol, datasets):
+ folder=root/(symbol+".tmp")
  if folder.exists(): shutil.rmtree(folder)
  folder.mkdir(parents=True,exist_ok=False)
  for interval,rows in datasets.items():
@@ -87,50 +87,62 @@ def write_dataset(symbol, datasets):
    writer.writerow(["openTime","open","high","low","close","volume","closeTime"])
    for row in rows:
     writer.writerow([row[0],row[1],row[2],row[3],row[4],row[5],row[6]])
- final_folder=OUT/symbol
+ final_folder=root/symbol
  if final_folder.exists(): shutil.rmtree(final_folder)
  folder.replace(final_folder)
 
 def main():
- # Resolve the live universe before touching existing history; preserve old data if Binance is unreachable.
+ # Resolve the live universe before touching existing history; preserve old data on any failed refresh.
  candidates=ranked_symbols()
  end=int(datetime.now(timezone.utc).timestamp()*1000)
  start=end-DAYS*86400000
- OUT.mkdir(parents=True,exist_ok=True)
- # OUT is a dedicated generated-data directory: remove stale coin folders and old manifest.
- for child in OUT.iterdir():
-  if child.is_dir(): shutil.rmtree(child)
-  elif child.name in ("manifest.json","manifest.json.tmp"): child.unlink()
- accepted=[]
- print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
- for symbol in candidates:
-  if len(accepted)>=COUNT:
-   break
-  datasets={}
+ OUT.parent.mkdir(parents=True,exist_ok=True)
+ staging=OUT.with_name(OUT.name+".staging")
+ backup=OUT.with_name(OUT.name+".previous")
+ if staging.exists(): shutil.rmtree(staging)
+ staging.mkdir(parents=True)
+ try:
+  accepted=[]
+  print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
+  for symbol in candidates:
+   if len(accepted)>=COUNT:
+    break
+   datasets={}
+   try:
+    for interval in INTERVALS:
+     rows=download(symbol,interval,start,end)
+     if len(rows)<MINIMUM[interval]:
+      raise ValueError(f"insufficient {interval}: {len(rows)} < {MINIMUM[interval]}")
+     datasets[interval]=rows
+    write_dataset(staging,symbol,datasets)
+    accepted.append(symbol)
+    counts=", ".join(f"{interval}={len(rows)}" for interval,rows in datasets.items())
+    print(f"ACCEPTED {symbol}: {counts}",flush=True)
+   except (ValueError,RuntimeError,OSError,TimeoutError) as exc:
+    partial=staging/(symbol+".tmp")
+    if partial.exists(): shutil.rmtree(partial)
+    print(f"SKIPPED {symbol}: {exc}",flush=True)
+   time.sleep(0.15)
+  if len(accepted)<COUNT:
+   raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
+  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
+  temp=staging/"manifest.json.tmp"
+  temp.write_text(json.dumps(manifest,indent=2)+"\\n",encoding="utf-8")
+  temp.replace(staging/"manifest.json")
+  if backup.exists(): shutil.rmtree(backup)
+  had_previous=OUT.exists()
+  if had_previous: OUT.replace(backup)
   try:
-   for interval in INTERVALS:
-    rows=download(symbol,interval,start,end)
-    if len(rows)<MINIMUM[interval]:
-     raise ValueError(f"insufficient {interval}: {len(rows)} < {MINIMUM[interval]}")
-    datasets[interval]=rows
-   write_dataset(symbol,datasets)
-   accepted.append(symbol)
-   counts=", ".join(f"{interval}={len(rows)}" for interval,rows in datasets.items())
-   print(f"ACCEPTED {symbol}: {counts}",flush=True)
-  except (ValueError,RuntimeError,OSError,TimeoutError) as exc:
-   partial=OUT/(symbol+".tmp")
-   if partial.exists(): shutil.rmtree(partial)
-   # Network failures for one pair must not prevent trying the next eligible pair.
-   print(f"SKIPPED {symbol}: {exc}",flush=True)
-  time.sleep(0.15)
- if len(accepted)<COUNT:
-  raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
- manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
- temp=OUT/"manifest.json.tmp"
- temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
- temp.replace(OUT/"manifest.json")
- print("Validated fresh multi-coin universe: "+", ".join(accepted),flush=True)
- print(f"Downloaded {len(accepted)} fresh coins x 3 intervals; public endpoints, no API key.")
+   staging.replace(OUT)
+  except Exception:
+   if had_previous and backup.exists() and not OUT.exists(): backup.replace(OUT)
+   raise
+  if backup.exists(): shutil.rmtree(backup)
+  print("Validated fresh multi-coin universe: "+", ".join(accepted),flush=True)
+  print(f"Downloaded {len(accepted)} fresh coins x 3 intervals; public endpoints, no API key.")
+ except Exception:
+  if staging.exists(): shutil.rmtree(staging)
+  raise
 
 if __name__=="__main__":
  main()
