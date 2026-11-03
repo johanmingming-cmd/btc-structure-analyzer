@@ -43,6 +43,38 @@ class MultiCoinMetricsAggregatorTest {
         }
     }
 
+
+    @Test fun rejectsMeanReturnLargerThanMaximumAbsoluteReturn() {
+        val aggregator = MultiCoinMetricsAggregator()
+        try {
+            aggregator.add(HorizonEvaluation(12, 1, 1, 1, 0, 0, 0, 100.0, 100.0, 2.0, 1.0))
+            throw AssertionError("Mean return cannot exceed maximum absolute return")
+        } catch (_: IllegalArgumentException) {
+            // Expected.
+        }
+    }
+
+    @Test fun rejectsNonFinitePooledReturnSum() {
+        val aggregator = MultiCoinMetricsAggregator()
+        try {
+            aggregator.add(HorizonEvaluation(12, 2, 2, 2, 0, 0, 0, 100.0, 100.0, Double.MAX_VALUE, Double.MAX_VALUE))
+            throw AssertionError("Pooled return overflow must be rejected")
+        } catch (_: IllegalArgumentException) {
+            // Expected.
+        }
+    }
+
+    @Test fun rejectsCountOverflowInsteadOfWrapping() {
+        val aggregator = MultiCoinMetricsAggregator()
+        aggregator.add(HorizonEvaluation(12, Int.MAX_VALUE, 0, 0, 0, 0, Int.MAX_VALUE, 0.0, null, null, null))
+        try {
+            aggregator.add(HorizonEvaluation(12, 1, 0, 0, 0, 0, 1, 0.0, null, null, null))
+            throw AssertionError("Pooled count overflow must be rejected")
+        } catch (_: ArithmeticException) {
+            // Expected.
+        }
+    }
+
     @Test fun rejectsInconsistentPerCoinCounts() {
         val aggregator = MultiCoinMetricsAggregator()
         try {
