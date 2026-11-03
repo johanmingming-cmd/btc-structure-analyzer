@@ -784,7 +784,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (autoRefresh) "Auto scan Spot aktif • target setiap 10 menit" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Auto scan Spot aktif • jeda sekitar 10 menit setelah scan" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -830,7 +830,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Scan manual + auto scan Spot setiap 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scan manual + jeda sekitar 10 menit setelah setiap scan saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
