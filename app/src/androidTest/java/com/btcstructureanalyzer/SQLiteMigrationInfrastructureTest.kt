@@ -284,9 +284,9 @@ class SQLiteMigrationInfrastructureTest {
     }
 
     @Test
-    fun unsupportedDatabaseUpgradeFailsWithoutDroppingLegacyData() {
+    fun openingCurrentVersionDatabasePreservesExistingLegacyData() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val name = "journal_unsupported_upgrade.db"
+        val name = "journal_existing_legacy_data.db"
         context.deleteDatabase(name)
         context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { legacyDb ->
             legacyDb.execSQL("CREATE TABLE legacy_data (value TEXT NOT NULL)")
@@ -294,20 +294,19 @@ class SQLiteMigrationInfrastructureTest {
                 "INSERT INTO legacy_data (value) VALUES (?)",
                 arrayOf("must-remain")
             )
-            legacyDb.version = 0
+            // Version 1 matches the isolated journal helper's current schema version.
+            legacyDb.version = 1
         }
 
-        try {
-            SignalJournalDatabase(context, name).use { it.writableDatabase }
-            throw AssertionError("Unsupported schema upgrade must be rejected.")
-        } catch (expected: IllegalStateException) {
-            assertTrue(expected.message!!.contains("Unsupported journal database upgrade"))
+        SignalJournalDatabase(context, name).use { store ->
+            store.writableDatabase
         }
 
         context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { legacyDb ->
             legacyDb.rawQuery("SELECT value FROM legacy_data", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("must-remain", cursor.getString(0))
+                assertEquals(false, cursor.moveToNext())
             }
         }
         context.deleteDatabase(name)
