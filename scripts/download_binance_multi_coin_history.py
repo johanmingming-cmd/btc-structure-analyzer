@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Download closed Binance Spot history for the most liquid eligible USDT pairs."""
-import csv,json,os,re,shutil,time,urllib.error,urllib.parse,urllib.request
+import csv,json,math,os,re,shutil,time,urllib.error,urllib.parse,urllib.request
 from datetime import datetime,timezone
 from pathlib import Path
 
@@ -43,7 +43,7 @@ def ranked_symbols():
    quote_volume=float(ticker["quoteVolume"])
   except (ValueError,KeyError,TypeError):
    continue
-  if quote_volume>0:
+  if math.isfinite(quote_volume) and quote_volume>0:
    ranked.append((quote_volume,symbol))
  return [symbol for _,symbol in sorted(ranked,reverse=True)]
 
@@ -52,6 +52,27 @@ def page(symbol,interval,start,end):
   "symbol":symbol,"interval":interval,"startTime":start,"endTime":end,"limit":LIMIT
  })
  return get_json(BASE+"/klines?"+query)
+
+def validate_kline(row,symbol,interval):
+ step=INTERVALS[interval]
+ if not isinstance(row,(list,tuple)) or len(row)<7:
+  raise ValueError(f"Malformed kline row: {symbol} {interval}")
+ try:
+  open_time=int(row[0])
+  open_price,high,low,close,volume=map(float,row[1:6])
+  close_time=int(row[6])
+ except (ValueError,TypeError,OverflowError) as exc:
+  raise ValueError(f"Non-numeric kline field: {symbol} {interval}") from exc
+ values=(open_price,high,low,close,volume)
+ if open_time<0 or close_time!=open_time+step-1:
+  raise ValueError(f"Invalid candle timestamps: {symbol} {interval} {open_time}")
+ if not all(math.isfinite(value) for value in values):
+  raise ValueError(f"Non-finite OHLCV: {symbol} {interval} {open_time}")
+ if min(open_price,high,low,close)<=0 or volume<0:
+  raise ValueError(f"Non-positive price or negative volume: {symbol} {interval} {open_time}")
+ if high<max(open_price,close,low) or low>min(open_price,close,high):
+  raise ValueError(f"Invalid OHLC range: {symbol} {interval} {open_time}")
+ return open_time,close_time
 
 def download(symbol,interval,start,end):
  rows=[]
@@ -63,13 +84,23 @@ def download(symbol,interval,start,end):
    raise RuntimeError(f"Unexpected response for {symbol} {interval}")
   if not batch:
    break
+  for row in batch:
+   validate_kline(row,symbol,interval)
   rows.extend(batch)
   next_cursor=int(batch[-1][0])+step
   if next_cursor<=cursor:
    raise RuntimeError(f"Pagination stalled: {symbol} {interval}")
   cursor=next_cursor
   time.sleep(0.12)
- unique={int(row[0]):row for row in rows if int(row[6])<end}
+ unique={}
+ for row in rows:
+  open_time,close_time=validate_kline(row,symbol,interval)
+  if close_time>=end:
+   continue
+  previous=unique.get(open_time)
+  if previous is not None and previous!=row:
+   raise RuntimeError(f"Conflicting duplicate candle: {symbol} {interval} {open_time}")
+  unique[open_time]=row
  ordered=[unique[key] for key in sorted(unique)]
  for previous,current in zip(ordered,ordered[1:]):
   if int(current[0])-int(previous[0])!=step:
