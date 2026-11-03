@@ -144,3 +144,29 @@ class SignalJournalCodecRoundTripTest {
         val roundTripped = SignalJournal.parseRecords(SignalJournal.serializeRecords(listOf(restored))).single()
         assertEquals(restored, roundTripped)
     }
+
+
+    @Test
+    fun malformedIntegerFieldsAreRejectedInsteadOfSilentlyCoerced() {
+        val valid = """[{
+            "id":"strict-1","time":1700000000000,"symbol":"BTCUSDT","direction":"LONG",
+            "price":65000.0,"entryLow":64980.0,"entryHigh":65020.0,
+            "stopLoss":64800.0,"takeProfit1":65200.0,"takeProfit2":65400.0,
+            "score":80,"supports":[],"resistances":[]
+        }]"""
+        val malformed = listOf(
+            valid.replace("\"time\":1700000000000", "\"time\":\"1700000000000\""),
+            valid.replace("\"score\":80", "\"score\":\"80\""),
+            valid.replace("\"score\":80", "\"score\":80.5"),
+            valid.replace("\"supports\":[]", "\"supports\":[],\"evaluationTime10m\":\"1700000600000\"")
+        )
+
+        malformed.forEach { raw ->
+            try {
+                SignalJournal.parseRecords(raw)
+                throw AssertionError("Malformed integer field must be rejected: $raw")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("existing data was left untouched"))
+            }
+        }
+    }
