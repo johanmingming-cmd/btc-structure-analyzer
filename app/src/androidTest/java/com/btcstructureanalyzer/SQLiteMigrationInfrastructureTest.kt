@@ -233,4 +233,32 @@ class SQLiteMigrationInfrastructureTest {
         context.deleteDatabase(name)
     }
 
+
+    @Test
+    fun malformedLegacyBackupIsRejectedWithoutChangingBackupOrCreatingMigrationMarker() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        val backupKey = "signal_journal_v1"
+        val malformedBackup = "[{"
+        prefs.edit().putString(backupKey, malformedBackup).commit()
+
+        val name = "journal_migration_malformed_backup.db"
+        context.deleteDatabase(name)
+        SignalJournalDatabase(context, name).use { store ->
+            try {
+                val parsed = SignalJournal.parseRecords(prefs.getString(backupKey, null)!!)
+                store.migrateIfNeeded(parsed)
+                throw AssertionError("Malformed legacy backup must not be migrated.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("existing data was left untouched"))
+            }
+            assertEquals(false, store.isMigrated())
+            assertEquals(emptyList<SignalRecord>(), store.readAll())
+        }
+
+        assertEquals(malformedBackup, prefs.getString(backupKey, null))
+        prefs.edit().remove(backupKey).commit()
+        context.deleteDatabase(name)
+    }
+
 }
