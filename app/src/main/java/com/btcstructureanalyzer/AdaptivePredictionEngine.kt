@@ -121,8 +121,8 @@ object AdaptivePredictionEngine {
             AdaptiveReason.WAIT_NO_SETUP else AdaptiveReason.SIGNAL_CONFIRMED
         val diagnosticExplanation = if (selected.decision == AdaptiveDecision.WAIT) {
             when (regime) {
-                AdaptiveRegime.TREND -> "TREND_WAIT_${trend.waitReason ?: "UNKNOWN"}"
-                AdaptiveRegime.RANGE -> "RANGE_WAIT_${range.waitReason ?: "UNKNOWN"}"
+                AdaptiveRegime.TREND -> "TREND_WAIT_${trend.waitReason ?: "UNKNOWN"}|${trend.diagnosticDetail ?: "UNSPECIFIED"}"
+                AdaptiveRegime.RANGE -> "RANGE_WAIT_${range.waitReason ?: "UNKNOWN"}|${range.diagnosticDetail ?: "UNSPECIFIED"}"
                 else -> selected.explanation
             }
         } else {
