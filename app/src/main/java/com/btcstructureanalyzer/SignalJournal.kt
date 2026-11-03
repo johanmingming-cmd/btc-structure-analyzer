@@ -130,9 +130,6 @@ object SignalJournal {
                     val value = row.opt(key) as? Number ?: return null
                     return value.toDouble().takeIf { it.isFinite() && it > 0.0 }
                 }
-                fun legacyTime(key: String): Long? = runCatching { optionalTime(key) }.getOrNull()
-                fun legacyString(key: String, default: String): String =
-                    (row.opt(key) as? String)?.takeIf { it.isNotBlank() } ?: default
                 fun optionalTime(key: String): Long? {
                     if (!row.has(key) || row.isNull(key)) return null
                     val value = row.opt(key)
@@ -141,6 +138,9 @@ object SignalJournal {
                     require(number.isFinite() && number > 0.0 && number % 1.0 == 0.0) { "field $key tidak valid" }
                     return number.toLong()
                 }
+                fun legacyTime(key: String): Long? = runCatching { optionalTime(key) }.getOrNull()
+                fun legacyString(key: String, default: String): String =
+                    (row.opt(key) as? String)?.takeIf { it.isNotBlank() } ?: default
                 fun optionalString(key: String, default: String? = null): String? {
                     if (!row.has(key) || row.isNull(key)) return default
                     return (row.opt(key) as? String)
