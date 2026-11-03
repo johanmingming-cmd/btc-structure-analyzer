@@ -1,6 +1,15 @@
 name: Prediction Lab Research Harness Historical Validation
 on:
   workflow_dispatch:
+    inputs:
+      end_time_ms:
+        description: "Optional fixed dataset end time in Unix milliseconds"
+        required: false
+        type: string
+      symbols:
+        description: "Optional comma-separated fixed USDT symbols (for example BTCUSDT,ETHUSDT)"
+        required: false
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
