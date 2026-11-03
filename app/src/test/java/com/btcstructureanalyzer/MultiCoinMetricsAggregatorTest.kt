@@ -21,6 +21,28 @@ class MultiCoinMetricsAggregatorTest {
         assertEquals(7.0, result.maxAbsoluteReturnPercent!!, 0.0001)
     }
 
+    @Test fun leavesMaximumReturnUndefinedWhenEveryPredictionWaits() {
+        val aggregator = MultiCoinMetricsAggregator()
+        aggregator.add(HorizonEvaluation(12, 10, 0, 0, 0, 0, 10, 0.0, null, null, null))
+
+        val result = aggregator.results().single()
+        assertEquals(10, result.candidateCount)
+        assertEquals(0, result.evaluated)
+        assertEquals(10, result.waitCount)
+        assertEquals(null, result.maxAbsoluteReturnPercent)
+        assertEquals(null, result.meanSignedReturnPercent)
+    }
+
+    @Test fun rejectsMissingReturnMetricsWhenOutcomesWereEvaluated() {
+        val aggregator = MultiCoinMetricsAggregator()
+        try {
+            aggregator.add(HorizonEvaluation(12, 1, 1, 1, 0, 0, 0, 100.0, 100.0, null, null))
+            throw AssertionError("Evaluated outcomes must include return metrics")
+        } catch (_: IllegalArgumentException) {
+            // Expected.
+        }
+    }
+
     @Test fun rejectsInconsistentPerCoinCounts() {
         val aggregator = MultiCoinMetricsAggregator()
         try {
