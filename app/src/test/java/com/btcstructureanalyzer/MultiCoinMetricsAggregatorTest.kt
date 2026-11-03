@@ -6,8 +6,8 @@ import org.junit.Test
 class MultiCoinMetricsAggregatorTest {
     @Test fun poolsCountsAndWeightsMeanReturnByEvaluatedSignals() {
         val aggregator = MultiCoinMetricsAggregator()
-        aggregator.add(HorizonEvaluation(12, 100, 20, 15, 5, 0, 80.0, 75.0, 1.0, 4.0))
-        aggregator.add(HorizonEvaluation(12, 300, 60, 30, 30, 0, 80.0, 50.0, -0.5, 7.0))
+        aggregator.add(HorizonEvaluation(12, 100, 20, 15, 5, 0, 80, 20.0, 75.0, 1.0, 4.0))
+        aggregator.add(HorizonEvaluation(12, 300, 60, 30, 30, 0, 240, 20.0, 50.0, -0.5, 7.0))
 
         val result = aggregator.results().single()
         assertEquals(400, result.candidateCount)
