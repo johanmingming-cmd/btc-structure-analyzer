@@ -119,10 +119,19 @@ object AdaptivePredictionEngine {
         val family = selected.family
         val reason = if (selected.decision == AdaptiveDecision.WAIT)
             AdaptiveReason.WAIT_NO_SETUP else AdaptiveReason.SIGNAL_CONFIRMED
+        val diagnosticExplanation = if (selected.decision == AdaptiveDecision.WAIT) {
+            when (regime) {
+                AdaptiveRegime.TREND -> "TREND_WAIT_${trend.waitReason ?: "UNKNOWN"}"
+                AdaptiveRegime.RANGE -> "RANGE_WAIT_${range.waitReason ?: "UNKNOWN"}"
+                else -> selected.explanation
+            }
+        } else {
+            selected.explanation
+        }
         return AdaptiveEngineResult(
             selected.decision, regime, reason, input.decisionTime, h1.last().openTime,
             metrics.atrPercent, metrics.expansion, metrics.efficiency, metrics.slopeAtr,
-            selected.explanation, family, selected.qualityScore
+            diagnosticExplanation, family, selected.qualityScore
         )
     }
 
