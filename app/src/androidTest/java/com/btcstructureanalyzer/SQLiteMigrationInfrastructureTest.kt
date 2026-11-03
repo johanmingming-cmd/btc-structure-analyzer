@@ -139,7 +139,7 @@ class SQLiteMigrationInfrastructureTest {
             val result = store.migrateIfNeeded(SignalJournal.parseRecords(prefs.getString(backupKey, null)!!))
             assertTrue(result.migrated)
             assertEquals(3, result.recordCount)
-            assertEquals(records, store.readAll())
+            assertEquals(records.map { SignalJournal.serializeRecords(listOf(it)) }, store.readAll().map { SignalJournal.serializeRecords(listOf(it)) })
             assertEquals("ok", store.integrityCheck())
             assertTrue(store.isMigrated())
         }
