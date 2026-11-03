@@ -87,7 +87,7 @@ class HistoricalMultiCoinValidationTest {
    println("MULTI_COIN_DATASET symbol=${coin.name} bars1h=${h1.size} bars15m=${m15.size} bars5m=${m5.size}")
    diagnostics.toSortedMap().forEach{(reason,count)->println("MULTI_COIN_DIAGNOSTIC symbol=${coin.name} count=$count state=$reason")}
    result.horizons.forEach{row->
-    println("MULTI_COIN_METRIC symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_METRIC symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
     aggregates.add(row)
    }
   }
@@ -123,12 +123,12 @@ class HistoricalMultiCoinValidationTest {
     ).decision
    }
    result.horizons.forEach{row->
-    println("MULTI_COIN_EXPERIMENT profile=range_moderate symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_EXPERIMENT split=development profile=range_moderate symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
     aggregates.add(row)
    }
   }
   for(row in aggregates.results()){
-   println("MULTI_COIN_EXPERIMENT_AGGREGATE profile=range_moderate horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   println("MULTI_COIN_DEVELOPMENT_EXPERIMENT_AGGREGATE split=development profile=range_moderate horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
   }
  }
 
@@ -160,12 +160,12 @@ class HistoricalMultiCoinValidationTest {
     result.horizons.forEach{aggregates.add(it)}
    }
    for(row in aggregates.results()){
-    println("MULTI_COIN_ONE_FACTOR profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_ONE_FACTOR split=development profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
    }
   }
  }
 
- @Test fun compareDefaultVsAtrToleranceOnNonOverlappingOutOfSampleWindows(){
+ @Test fun compareDefaultVsAtrToleranceOnNonOverlappingDevelopmentWindows(){
   val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
   val manifestJson=JSONObject(File(root,"manifest.json").readText())
   val symbolsArray=manifestJson.getJSONArray("symbols")
@@ -189,7 +189,7 @@ class HistoricalMultiCoinValidationTest {
      result.horizons.forEach{aggregates.add(it)}
     }
     for(row in aggregates.results()){
-     println("MULTI_COIN_NONOVERLAP profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+     println("MULTI_COIN_DEVELOPMENT_NONOVERLAP split=development profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
     }
    }
   }
