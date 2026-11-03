@@ -4,52 +4,45 @@
 
 This branch is isolated from the installed 1.5.2 APK and the existing B3 implementation branch. It is research tooling only. It does not change live scanner behavior, UI, production defaults, or release artifacts. No branch merge or release is authorized by this work.
 
-## Diagnostic reporting
+The current research phase is frozen. Do not add more exploratory parameter sweeps or repeat completed audits. No algorithm threshold has been approved for production because none has shown a consistent improvement across development and validation.
 
-Detector WAIT summaries are retained for compatibility, while a second diagnostic detail identifies the first failing condition. Range diagnostics distinguish missing boundary sweeps, excessive penetration, failed reclaim, insufficient wick/body, insufficient volume, ambiguous boundaries, and missing/weak 5m confirmation. Trend diagnostics distinguish weak/wrong-direction 15m candles, missing breakout/pullback patterns, missing 5m trigger, weak trigger body, and low 5m volume.
-
-These details are observational only: they must not change whether the detector returns LONG, SHORT, or WAIT.
-
-## Dataset reproducibility
-
-The downloader supports:
-- `MULTI_HISTORY_END_TIME_MS` to pin the request end timestamp.
-- `MULTI_HISTORY_SYMBOLS` to pin an explicit ordered USDT symbol list.
-- Manifest coverage per symbol and interval, including bar count, first open timestamp, and last close timestamp.
-- A manifest note explaining whether the universe was explicitly pinned or selected from current 24-hour quote volume.
-
-The default live-volume universe is a convenience sample, not a point-in-time historical universe. Results must be described as conditional on the selected current universe; they must not be presented as free of survivorship or universe-selection bias. The denylist is maintained and covered by tests; it is not a universal classification of every stablecoin.
-
-A single downloaded dataset should be reused for all profiles being compared. Do not redownload between parameter profiles.
-
-## Chronological evaluation
-
-The segment evaluator allows all earlier candles as warm-up history but only scores decisions inside a specified time window. A forward outcome is eligible only if its closing timestamp remains inside that same segment. It never passes future candles to the predictor.
-
-Target split for a 180-day dataset:
-- Development: first 60% (about 108 days), after a warm-up of at least 50 5m candles.
-- Validation: next 20% (about 36 days), used to confirm a candidate selected on development data.
-- Final holdout: last 20% (about 36 days), opened only after the candidate and evaluation rules are frozen.
-
-For each horizon, use non-overlapping outcome windows as the primary comparison (evaluation step equal to horizon bars). More frequent overlapping samples may be supplementary only and must be labeled accordingly.
-
-## Metrics and interpretation
-
-Report pooled candidate count, signal count, WAIT count, coverage, hit/miss/neutral counts, hit rate, mean signed close-to-close return, and per-coin consistency. Always show sample size. Hit rate is not a win probability and close-to-close returns omit fees, slippage, execution, and path risk. Do not select a profile using final-holdout results.
-
-## Current implementation status
+## Completed research infrastructure
 
 - [x] Create isolated experiment branch from B3 head.
 - [x] Add detector-level WAIT sub-reason diagnostics without changing default thresholds.
-- [x] Add focused unit tests for selected diagnostic paths.
+- [x] Add focused unit tests for diagnostic paths.
 - [x] Add fixed-universe and fixed-end downloader controls.
 - [x] Record exact candle coverage in the manifest.
-- [x] Add a chronological segment evaluator with segment-contained outcomes.
-- [ ] Complete development/validation/holdout orchestration in the historical multi-coin test.
-- [ ] Run and inspect the focused unit-test workflow.
-- [ ] Add historical-run artifact retention so the exact downloaded dataset and report can be reused.
-- [ ] Review results before proposing any algorithm change.
+- [x] Add chronological segment evaluation with warm-up history and segment-contained outcomes.
+- [x] Add development/validation/final-holdout separation.
+- [x] Use non-overlapping outcome windows as the primary comparison.
+- [x] Retain the exact downloaded dataset, manifest, and report as a workflow artifact.
+- [x] Complete the initial 180-day, 10-symbol research run and baseline report.
+- [x] Complete diagnostic audits of regime, setup family, coin, volatility, pullback, range rejection, and 5m trigger quality.
 
-## Validation commands
+## Frozen findings
 
-The unit-test workflow runs Python downloader tests and focused Kotlin detector/engine/evaluator tests. It deliberately does not build or sign an APK.
+- The default baseline did not demonstrate a stable predictive edge.
+- Validation results did not persist on the final holdout.
+- Tested range-filter and bias-threshold candidates did not show a consistent improvement; none is approved for production.
+- 5m trend volume showed a descriptive difference between correct and incorrect signals, but sample size and coin concentration are insufficient to justify a new filter.
+- Pullback definition is permissive, but the tested stricter retracement candidate did not improve results consistently.
+- The final holdout was evaluated once using the default configuration. It is report-only and must never be reused to tune, select, or validate new candidates.
+
+## Dataset and interpretation limits
+
+The initial 180-day universe was selected using current 24-hour quote volume. Results are conditional on that selected universe and have survivorship/universe-selection bias; they are not a point-in-time historical universe. The downloader supports pinned symbols and a fixed end timestamp for future reproducibility.
+
+Close-to-close returns omit fees, slippage, execution, and path risk. Hit rate is not a win probability or evidence of live profitability. Small signal counts, especially at 6h, must be shown alongside every metric.
+
+## One remaining execution
+
+The research harness and audit phase are complete. Do not make speculative algorithm changes now.
+
+When ready, run the historical workflow manually exactly once with a newly downloaded dataset and frozen code. It will run focused tests, perform the chronological report, and retain the dataset/manifest/report artifact. Do not rerun the same dataset after its final holdout has been evaluated. After that single run, collect the report and analyze it once as a consolidated result.
+
+## CI and quota protection
+
+Both research workflows are manual-dispatch only. They do not run automatically on push or pull-request events. Prefer the single historical-validation workflow for the final consolidated run; use the unit-only workflow only when a code change specifically requires a quick check.
+
+The workflows do not build or sign an APK. No APK build, merge, release, or production change is part of this research phase.
