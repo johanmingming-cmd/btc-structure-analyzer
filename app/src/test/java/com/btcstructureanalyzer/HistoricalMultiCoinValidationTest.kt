@@ -24,8 +24,17 @@ class HistoricalMultiCoinValidationTest {
  @Test fun evaluateTopLiquidUsdtSpotCoinsAcrossFlexibleHorizons(){
   val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
   require(root.isDirectory) { "Multi-coin history directory missing: ${root.absolutePath}" }
-  val coins=root.listFiles()?.filter{it.isDirectory}?.sortedBy{it.name}.orEmpty()
-  require(coins.size>=10) { "Expected at least 10 coin datasets, found ${coins.size}" }
+  val manifest=File(root,"manifest.json")
+  require(manifest.isFile) { "Fresh dataset manifest missing: ${manifest.absolutePath}" }
+  val manifestText=manifest.readText()
+  require(manifestText.contains("\\\"schemaVersion\\\": 1") && manifestText.contains("Binance Spot public klines")) { "Unsupported or invalid dataset manifest" }
+  val symbolsBlock=Regex("\\\"symbols\\\"\\s*:\\s*\\[([^]]*)]").find(manifestText)?.groupValues?.get(1)
+      ?: error("Manifest symbols list missing")
+  val symbols=Regex("\\\"([A-Z0-9]+USDT)\\\"").findAll(symbolsBlock).map{it.groupValues[1]}.toList()
+  require(symbols.size>=10 && symbols.distinct().size==symbols.size) { "Manifest must list at least 10 unique symbols" }
+  val actualDirs=root.listFiles()?.filter{it.isDirectory}?.map{it.name}?.toSet().orEmpty()
+  require(actualDirs==symbols.toSet()) { "Dataset folders do not exactly match fresh manifest symbols" }
+  val coins=symbols.map{File(root,it)}
   val aggregates=MultiCoinMetricsAggregator()
   for(coin in coins){
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
