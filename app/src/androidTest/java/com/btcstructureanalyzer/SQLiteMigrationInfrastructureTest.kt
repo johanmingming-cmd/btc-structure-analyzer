@@ -261,4 +261,51 @@ class SQLiteMigrationInfrastructureTest {
         context.deleteDatabase(name)
     }
 
+
+    @Test
+    fun emptyJournalMigrationIsMarkedAndIdempotent() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_empty.db"
+        context.deleteDatabase(name)
+
+        SignalJournalDatabase(context, name).use { store ->
+            val first = store.migrateIfNeeded(emptyList())
+            assertTrue(first.migrated)
+            assertEquals(0, first.recordCount)
+            assertTrue(store.isMigrated())
+        }
+        SignalJournalDatabase(context, name).use { store ->
+            val second = store.migrateIfNeeded(emptyList())
+            assertEquals(false, second.migrated)
+            assertEquals(0, second.recordCount)
+            assertEquals(emptyList<SignalRecord>(), store.readAll())
+            assertEquals("ok", store.integrityCheck())
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun inconsistentMigrationMarkerIsRejectedInsteadOfTrusted() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_bad_marker.db"
+        context.deleteDatabase(name)
+        val records = listOf(sampleRecord("one", "BTCUSDT", 1000L))
+
+        SignalJournalDatabase(context, name).use { store ->
+            store.writableDatabase.execSQL(
+                "INSERT INTO journal_meta (key, value) VALUES (?, ?)",
+                arrayOf("shared_preferences_json_v1", "1:1")
+            )
+            try {
+                store.migrateIfNeeded(records)
+                throw AssertionError("Marker count mismatch must be rejected.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("marker count mismatch"))
+            }
+            assertTrue(store.isMigrated())
+            assertEquals(emptyList<SignalRecord>(), store.readAll())
+        }
+        context.deleteDatabase(name)
+    }
+
 }
