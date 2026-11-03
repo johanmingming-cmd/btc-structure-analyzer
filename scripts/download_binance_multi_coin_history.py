@@ -99,6 +99,11 @@ def main():
  OUT.parent.mkdir(parents=True,exist_ok=True)
  staging=OUT.with_name(OUT.name+".staging")
  backup=OUT.with_name(OUT.name+".previous")
+ # Recover an interrupted swap before starting a new refresh.
+ if not OUT.exists() and backup.exists():
+  backup.replace(OUT)
+ elif OUT.exists() and backup.exists():
+  shutil.rmtree(backup)
  if staging.exists(): shutil.rmtree(staging)
  staging.mkdir(parents=True)
  try:
