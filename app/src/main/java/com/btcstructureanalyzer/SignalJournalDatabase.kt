@@ -51,10 +51,20 @@ internal class SignalJournalDatabase(
         val db = writableDatabase
         db.beginTransaction()
         try {
-            if (hasMigrationMarker(db)) {
-                val count = rowCount(db)
+            val existingMarker = migrationMarker(db)
+            if (existingMarker != null) {
+                val markerParts = existingMarker.split(":")
+                check(markerParts.size == 2 && markerParts[0].toIntOrNull() == DATABASE_VERSION) {
+                    "Journal migration marker is malformed or belongs to an unsupported schema."
+                }
+                val markedCount = markerParts[1].toIntOrNull()
+                    ?: error("Journal migration marker has an invalid record count.")
+                val actualCount = rowCount(db)
+                check(markedCount == actualCount) {
+                    "Journal migration marker count mismatch: marker=$markedCount, database=$actualCount."
+                }
                 db.setTransactionSuccessful()
-                return MigrationResult(migrated = false, recordCount = count)
+                return MigrationResult(migrated = false, recordCount = actualCount)
             }
 
             records.forEachIndexed { index, record ->
@@ -101,7 +111,7 @@ internal class SignalJournalDatabase(
         return result
     }
 
-    fun isMigrated(): Boolean = hasMigrationMarker(readableDatabase)
+    fun isMigrated(): Boolean = migrationMarker(readableDatabase) != null
 
     fun integrityCheck(): String =
         readableDatabase.rawQuery("PRAGMA integrity_check", null).use { cursor ->
@@ -109,11 +119,11 @@ internal class SignalJournalDatabase(
             cursor.getString(0)
         }
 
-    private fun hasMigrationMarker(db: SQLiteDatabase): Boolean =
+    private fun migrationMarker(db: SQLiteDatabase): String? =
         db.rawQuery(
             "SELECT value FROM journal_meta WHERE key = ?",
             arrayOf(MIGRATION_MARKER)
-        ).use { it.moveToFirst() }
+        ).use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
 
     private fun rowCount(db: SQLiteDatabase): Int =
         db.rawQuery("SELECT COUNT(*) FROM signal_records", null).use {
