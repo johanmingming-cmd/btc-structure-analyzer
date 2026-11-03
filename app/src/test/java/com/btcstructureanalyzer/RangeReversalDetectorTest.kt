@@ -14,7 +14,7 @@ class RangeReversalDetectorTest {
 
     @Test fun confirmsSupportSweepOnlyAfterFiveMinuteBullishBreakout() {
         val m15 = base15()
-        m15[m15.lastIndex] = Candle(30, 99.2, 101.0, 98.8, 100.8, 1400.0, 31)
+        m15[m15.lastIndex] = Candle(30, 100.5, 101.0, 98.8, 100.8, 1400.0, 31)
         val m5 = base5()
         m5[m5.lastIndex] = Candle(20, 100.0, 102.0, 99.8, 101.8, 1300.0, 21)
 
@@ -26,7 +26,7 @@ class RangeReversalDetectorTest {
 
     @Test fun rejectsDeepBoundaryBreakInsteadOfCallingItRejection() {
         val m15 = base15()
-        m15[m15.lastIndex] = Candle(30, 99.2, 101.0, 95.0, 100.8, 1400.0, 31)
+        m15[m15.lastIndex] = Candle(30, 100.5, 101.0, 95.0, 100.8, 1400.0, 31)
         val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
         assertEquals(SetupStatus.WAIT, result.status)
         assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
