@@ -130,7 +130,7 @@ object AdaptivePredictionEngine {
 
     private fun validateAndClose(source: List<Candle>, interval: Long, decisionTime: Long, config: AdaptiveEngineConfig): ValidatedSeries {
         if (source.isEmpty()) return ValidatedSeries(emptyList(), AdaptiveReason.WAIT_INSUFFICIENT_HISTORY, null)
-        val closed = source.filter { it.closeTime < decisionTime }.sortedBy { it.openTime }
+        val closed = source.filter { it.closeTime < decisionTime }
         if (closed.any { c ->
                 c.openTime < 0L || c.closeTime != c.openTime + interval - 1L ||
                     !c.open.isFinite() || !c.high.isFinite() || !c.low.isFinite() || !c.close.isFinite() ||
@@ -139,6 +139,8 @@ object AdaptivePredictionEngine {
                     c.low > minOf(c.open, c.close) || c.high < c.low
             }) return ValidatedSeries(emptyList(), AdaptiveReason.WAIT_DATA_INVALID, closed.lastOrNull()?.openTime)
         if (closed.size < 2) return ValidatedSeries(closed, AdaptiveReason.WAIT_INSUFFICIENT_HISTORY, closed.lastOrNull()?.openTime)
+        if (closed.zipWithNext().any { (a, b) -> b.openTime <= a.openTime })
+            return ValidatedSeries(closed, AdaptiveReason.WAIT_DATA_INVALID, closed.last().openTime)
         if (closed.zipWithNext().any { (a, b) -> b.openTime - a.openTime != interval })
             return ValidatedSeries(closed, AdaptiveReason.WAIT_DATA_GAP, closed.last().openTime)
         val latest = closed.last()
