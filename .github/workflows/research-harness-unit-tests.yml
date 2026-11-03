@@ -1,13 +1,6 @@
 name: Prediction Lab Research Harness Unit Tests
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - experiment/prediction-lab-research-harness
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - implementation/prediction-lab-stage-b3-core
 permissions:
   contents: read
 jobs:
