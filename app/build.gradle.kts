@@ -38,6 +38,7 @@ android {
 }
 tasks.withType<Test>().configureEach {
     testLogging {
+        events("passed", "skipped", "failed", "standardOut", "standardError")
         showStandardStreams = true
     }
 }
