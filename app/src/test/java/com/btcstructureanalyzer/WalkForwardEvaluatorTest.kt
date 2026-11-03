@@ -17,6 +17,16 @@ class WalkForwardEvaluatorTest {
   assertEquals(10,result.horizons[2].candidateCount)
  }
 
+
+ @Test fun rejectsHorizonWithoutEligibleTestDecisions(){
+  try{
+   WalkForwardEvaluator.evaluate(series(30),listOf(1,20),0.5){AdaptiveDecision.LONG}
+   throw AssertionError("Every horizon must have at least one eligible test decision")
+  }catch(_:IllegalArgumentException){
+   // Expected.
+  }
+ }
+
  @Test fun rejectsMissingCandleIntervalsBecauseHorizonsAreMeasuredInBars(){
   val data=series(30).toMutableList()
   data.removeAt(12)
