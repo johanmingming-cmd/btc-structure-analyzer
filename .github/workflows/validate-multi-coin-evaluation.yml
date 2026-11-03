@@ -1,0 +1,49 @@
+name: Validate Historical Multi-Coin Evaluation
+on:
+  push:
+    branches:
+      - implementation/prediction-lab-stage-b3-core
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - design/prediction-lab-stage-b2
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+      - name: Install Android platform and build tools
+        shell: bash
+        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Download top liquid USDT Spot history
+        env:
+          MULTI_HISTORY_DAYS: "90"
+          MULTI_HISTORY_COINS: "10"
+          MULTI_HISTORY_DIR: build/multi-coin-history
+        run: python scripts/download_binance_multi_coin_history.py
+      - name: Compile debug APK
+        run: gradle --no-daemon assembleDebug
+      - name: Run unit and mandatory multi-coin historical validation
+        env:
+          MULTI_HISTORY_DIR: build/multi-coin-history
+        run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.HistoricalMultiCoinValidationTest
