@@ -14,6 +14,15 @@ class HistoricalMultiCoinValidationTest {
   var signedReturnSum:Double=0.0,
   var maxAbsReturn:Double=0.0
  )
+ private fun requireValidSeries(candles:List<Candle>,interval:Long,label:String){
+  require(candles.zipWithNext().all{(a,b)->b.openTime-a.openTime==interval}) { "Candle gap in $label" }
+  require(candles.all{c->
+   c.openTime>=0L && c.closeTime==c.openTime+interval-1L &&
+    c.open.isFinite() && c.high.isFinite() && c.low.isFinite() && c.close.isFinite() &&
+    c.volume.isFinite() && c.open>0.0 && c.high>=maxOf(c.open,c.close) &&
+    c.low<=minOf(c.open,c.close) && c.low>0.0 && c.volume>=0.0
+  }) { "Invalid OHLCV or close timestamp in $label" }
+ }
  private fun load(file:File):List<Candle>{
   require(file.isFile) { "Required historical dataset is missing: ${file.absolutePath}" }
   return file.readLines().drop(1).filter{it.isNotBlank()}.map{line->
@@ -31,9 +40,9 @@ class HistoricalMultiCoinValidationTest {
   for(coin in coins){
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
    require(h1.size>1000 && m15.size>4000 && m5.size>12000) { "Insufficient history for ${coin.name}: ${h1.size}/${m15.size}/${m5.size}" }
-   require(h1.zipWithNext().all{(a,b)->b.openTime-a.openTime==3600000L}) { "1h gap in ${coin.name}" }
-   require(m15.zipWithNext().all{(a,b)->b.openTime-a.openTime==900000L}) { "15m gap in ${coin.name}" }
-   require(m5.zipWithNext().all{(a,b)->b.openTime-a.openTime==300000L}) { "5m gap in ${coin.name}" }
+   requireValidSeries(h1,3600000L,"${coin.name} 1h")
+   requireValidSeries(m15,900000L,"${coin.name} 15m")
+   requireValidSeries(m5,300000L,"${coin.name} 5m")
    val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
     AdaptivePredictionEngine.evaluate(AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)).decision
