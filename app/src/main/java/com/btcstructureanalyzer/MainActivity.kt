@@ -105,6 +105,7 @@ private fun AnalyzerApp(context: Context) {
     var spotLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
+    var signalHistoryError by remember { mutableStateOf<String?>(null) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
     var historyRefreshError by remember { mutableStateOf<String?>(null) }
     var historyRefreshMessage by remember { mutableStateOf<String?>(null) }
@@ -147,6 +148,14 @@ private fun AnalyzerApp(context: Context) {
             if (p.size == 4) runCatching { SavedRun(p[0].toLong(), p[1].toDouble(), p[2], p[3]) }.getOrNull() else null
         }
     }
+    fun reloadSignalHistory() {
+        try {
+            signalHistory = SignalJournal.read(context)
+            signalHistoryError = null
+        } catch (error: Exception) {
+            signalHistoryError = error.message ?: "Riwayat tidak dapat dibaca; data tidak diubah."
+        }
+    }
     fun refresh() {
         scope.launch {
             loading = true
@@ -175,7 +184,7 @@ private fun AnalyzerApp(context: Context) {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
+    LaunchedEffect(Unit) { loadHistory(); reloadSignalHistory(); refresh() }
     LaunchedEffect(selected) {
         if (selected == "Pengaturan") {
             while (true) {
@@ -546,7 +555,7 @@ private fun AnalyzerApp(context: Context) {
                                         val scanner = CoinScanner(repo, context)
                                          try {
                                             scannedCoins = scanner.scan(15)
-                                            SignalJournal.recordSignals(context, scannedCoins)
+                                            // CoinScanner owns journal writes; do not repeat the same write here.
                                         }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
                                         finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
@@ -624,7 +633,7 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshError = null
                                     historyRefreshMessage = null
                                     try {
-                                        val dueEvaluations = SignalJournal.pendingEvaluations(context)
+                                        val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
                                         var evaluationFailures = 0
                                         var evaluationUpdated = 0
                                         var lastEvaluationError: String? = null
@@ -673,7 +682,7 @@ private fun AnalyzerApp(context: Context) {
                             enabled = !historyRefreshLoading,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
+                            Text(if (historyRefreshLoading) "MEMPERBARUI EVALUASI HISTORIS…" else "SEGARKAN RIWAYAT")
                         }
                         historyRefreshMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
@@ -687,7 +696,8 @@ private fun AnalyzerApp(context: Context) {
                         exportMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         exportError?.let { Text("Export gagal: $it", color = Red, fontSize = 11.sp) }
                     }
-                    if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
+                    signalHistoryError?.let { message -> item { Text(message, color = Red, fontSize = 11.sp) } }
+                    if (signalHistory.isEmpty() && signalHistoryError == null) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
                     items(signalHistory, key = { it.id }) { run ->
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
@@ -898,12 +908,12 @@ private fun AnalyzerApp(context: Context) {
                         Column(Modifier.fillMaxWidth().padding(9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("CANDLE ${index + 1}", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(step.label, color = if (step.direction == "NAIK") Green else if (step.direction == "TURUN") Red else Amber, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                            Text("${step.confidence}%", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Skor ${step.score}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
             }
-            Text("Estimasi heuristik struktur + momentum, bukan model AI terlatih. Angka belum tervalidasi backtest dan bukan probabilitas akurat.", color = Muted, fontSize = 10.sp)
+            Text("Skor heuristik struktur + momentum, bukan probabilitas atau model AI terlatih. Belum tervalidasi backtest.", color = Muted, fontSize = 10.sp)
         }
     }
 }
