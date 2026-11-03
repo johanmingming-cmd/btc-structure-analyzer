@@ -681,7 +681,7 @@ private fun AnalyzerApp(context: Context) {
                                         }
                                         reloadSignalHistory()
                                         historyRefreshMessage = result.third
-                                    }                                    } catch (e: Exception) {
+                                    } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
                                         reloadSignalHistory()
                                     } finally {
