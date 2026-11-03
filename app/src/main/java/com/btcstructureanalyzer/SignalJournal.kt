@@ -64,28 +64,38 @@ object SignalJournal {
         val array = JSONArray(raw)
             (0 until array.length()).map { i ->
                 val o = array.optJSONObject(i) ?: error("Journal record at index $i is not a JSON object.")
+                fun numericValue(key: String, raw: Any?): Double {
+                    require(raw is Number) {
+                        "Journal field '$key' at index $i is not a number."
+                    }
+                    val value = raw.toDouble()
+                    require(value.isFinite()) {
+                        "Journal field '$key' at index $i is not finite."
+                    }
+                    return value
+                }
                 fun levels(key: String): List<Double> {
                     if (!o.has(key) || o.isNull(key)) return emptyList()
                     val values = o.optJSONArray(key) ?: error("Journal field '$key' at index $i is not an array.")
                     return (0 until values.length()).map { levelIndex ->
-                        val value = values.optDouble(levelIndex, Double.NaN)
-                        require(value.isFinite() && value > 0.0) {
+                        val value = numericValue("$key[$levelIndex]", values.opt(levelIndex))
+                        require(value > 0.0) {
                             "Journal field '$key' at index $i contains an invalid level at position $levelIndex."
                         }
                         value
                     }
                 }
                 fun requiredPrice(key: String): Double {
-                    val value = o.optDouble(key, Double.NaN)
-                    require(value.isFinite() && value > 0.0) {
+                    val value = numericValue(key, o.opt(key))
+                    require(value > 0.0) {
                         "Journal field '$key' at index $i is missing or contains an invalid price."
                     }
                     return value
                 }
                 fun optionalPrice(key: String): Double? {
                     if (!o.has(key) || o.isNull(key)) return null
-                    val value = o.optDouble(key, Double.NaN)
-                    require(value.isFinite() && value > 0.0) {
+                    val value = numericValue(key, o.opt(key))
+                    require(value > 0.0) {
                         "Journal field '$key' at index $i contains an invalid price."
                     }
                     return value
