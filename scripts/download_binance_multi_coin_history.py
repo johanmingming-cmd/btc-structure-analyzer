@@ -11,7 +11,7 @@ DAYS=int(os.environ.get("MULTI_HISTORY_DAYS","90"))
 COUNT=int(os.environ.get("MULTI_HISTORY_COINS","10"))
 OUT=Path(os.environ.get("MULTI_HISTORY_DIR","build/multi-coin-history"))
 LIMIT=1000
-EXCLUDED={"USDC","FDUSD","TUSD","USDP","DAI","USDE","USDS","BUSD","EUR","TRY","BRL","GBP","JPY","UST"}
+EXCLUDED={"USDC","FDUSD","TUSD","USDP","DAI","USDE","USDS","USD1","U","BUSD","EUR","TRY","BRL","GBP","JPY","UST"}
 
 def get_json(url):
  req=urllib.request.Request(url,headers={"User-Agent":"PredictionLab-MultiCoin-Validator/1.0"})
