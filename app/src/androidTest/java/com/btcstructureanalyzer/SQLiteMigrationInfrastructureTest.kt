@@ -206,11 +206,11 @@ class SQLiteMigrationInfrastructureTest {
         val prefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
         val backupKey = "signal_journal_v1"
         val sourceRecords = (0..2_000).map { index ->
-            sampleRecord("id-\${index}", "COIN\${index}USDT", 10_000L + index)
+            sampleRecord("id-$index", "COIN${index}USDT", 10_000L + index)
         }
         val rawBackup = JSONArray().apply {
             sourceRecords.forEach { record ->
-                put(JSONObject(SignalJournal.serializeRecords(listOf(record))).getJSONObject(0))
+                put(JSONArray(SignalJournal.serializeRecords(listOf(record))).getJSONObject(0))
             }
         }.toString()
         prefs.edit().putString(backupKey, rawBackup).commit()
