@@ -92,15 +92,16 @@ def write_dataset(symbol, datasets):
  folder.replace(final_folder)
 
 def main():
+ # Resolve the live universe before touching existing history; preserve old data if Binance is unreachable.
+ candidates=ranked_symbols()
  end=int(datetime.now(timezone.utc).timestamp()*1000)
  start=end-DAYS*86400000
  OUT.mkdir(parents=True,exist_ok=True)
- # OUT is a dedicated generated-data directory: remove stale coin folders and old manifest first.
+ # OUT is a dedicated generated-data directory: remove stale coin folders and old manifest.
  for child in OUT.iterdir():
   if child.is_dir(): shutil.rmtree(child)
   elif child.name in ("manifest.json","manifest.json.tmp"): child.unlink()
  accepted=[]
- candidates=ranked_symbols()
  print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
  for symbol in candidates:
   if len(accepted)>=COUNT:
