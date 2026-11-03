@@ -91,8 +91,6 @@ class SignalJournalCodecRoundTripTest {
 
         assertEquals(listOf(legacy), SignalJournal.parseRecords(SignalJournal.serializeRecords(listOf(legacy))))
     }
-}
-
 
     @Test
     fun olderJournalSchemaWithoutNewerOptionalFieldsUsesSafeLegacyDefaults() {
@@ -170,3 +168,4 @@ class SignalJournalCodecRoundTripTest {
             }
         }
     }
+}
