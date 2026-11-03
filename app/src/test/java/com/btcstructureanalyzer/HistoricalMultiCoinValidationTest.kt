@@ -67,4 +67,39 @@ class HistoricalMultiCoinValidationTest {
   }
   require(aggregates.horizons()==setOf(12,36,72)) { "Expected aggregate metrics for 1h, 3h and 6h horizons" }
  }
+
+ @Test fun compareModeratelyRelaxedRangeProfileWithoutChangingProductionDefaults(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val aggregates=MultiCoinMetricsAggregator()
+  val experimentalConfig=AdaptiveEngineConfig(
+   rangeSetup=RangeDetectionConfig(
+    boundaryLookback=16,
+    boundaryAtrTolerance=0.35,
+    minimumWickBodyRatio=0.90,
+    minimumVolumeRatio=0.60,
+    minimumBodyAtr=0.08
+   )
+  )
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+   val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+    val decisionTime=history.last().closeTime+1L
+    AdaptivePredictionEngine.evaluate(
+     AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
+     experimentalConfig
+    ).decision
+   }
+   result.horizons.forEach{row->
+    println("MULTI_COIN_EXPERIMENT profile=range_moderate symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    aggregates.add(row)
+   }
+  }
+  for(row in aggregates.results()){
+   println("MULTI_COIN_EXPERIMENT_AGGREGATE profile=range_moderate horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+  }
+ }
 }
