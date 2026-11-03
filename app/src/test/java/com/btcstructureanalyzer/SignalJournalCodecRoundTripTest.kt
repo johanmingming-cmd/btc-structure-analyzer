@@ -157,6 +157,8 @@ class SignalJournalCodecRoundTripTest {
             valid.replace("\"score\":80", "\"score\":\"80\""),
             valid.replace("\"score\":80", "\"score\":80.5"),
             valid.replace("\"supports\":[]", "\"supports\":[],\"evaluationTime10m\":\"1700000600000\"")
+            ,valid.replace("\"price\":65000.0", "\"price\":\"65000.0\"")
+            ,valid.replace("\"supports\":[]", "\"supports\":[\"64500.0\"]")
         )
 
         malformed.forEach { raw ->
