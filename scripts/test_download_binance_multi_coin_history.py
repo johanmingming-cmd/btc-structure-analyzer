@@ -54,7 +54,7 @@ class KlineValidationTests(unittest.TestCase):
 
 class UniverseFilteringTests(unittest.TestCase):
     @patch.object(DOWNLOADER, "get_json")
-    def test_excludes_usd1_and_u_stablecoin_pairs(self, get_json):
+    def test_excludes_known_stablecoin_base_assets(self, get_json):
         get_json.return_value = [
             {"symbol": "BTCUSDT", "quoteVolume": "1000"},
             {"symbol": "USD1USDT", "quoteVolume": "900"},
