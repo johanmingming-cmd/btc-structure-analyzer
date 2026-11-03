@@ -78,4 +78,32 @@ class WalkForwardEvaluatorTest {
   }
  }
 
+ @Test fun segmentEvaluatorKeepsWarmupAndContainsEveryForwardOutcome(){
+  val data=series(60)
+  val start=data[20].closeTime+1L
+  val end=data[40].closeTime+1L
+  var calls=0
+  val result=WalkForwardEvaluator.evaluateSegment(data,listOf(1,3),start,end,evaluationStep=2){
+   calls++
+   assertTrue(it.last().closeTime<end)
+   AdaptiveDecision.LONG
+  }
+  assertEquals(10,result.horizons[0].candidateCount)
+  assertEquals(9,result.horizons[1].candidateCount)
+  assertEquals(10,calls)
+  assertTrue(result.notes.any{it.contains("warm-up")})
+ }
+
+ @Test fun segmentEvaluatorRejectsHorizonWithoutContainedOutcome(){
+  val data=series(40)
+  val start=data[30].closeTime+1L
+  val end=data[32].closeTime+1L
+  try{
+   WalkForwardEvaluator.evaluateSegment(data,listOf(6),start,end){AdaptiveDecision.LONG}
+   throw AssertionError("Segment must reject horizons that cannot finish inside its boundary")
+  }catch(_:IllegalArgumentException){
+   // Expected.
+  }
+ }
+
 }
