@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download public Binance Spot BTCUSDT klines as CSV."""
+"""Download fully closed public Binance Spot BTCUSDT klines as CSV."""
 import csv,json,os,time,urllib.error,urllib.parse,urllib.request
 from datetime import datetime,timezone
 from pathlib import Path
@@ -26,13 +26,14 @@ def download(interval,start,end):
   rows.extend(batch);next_cursor=int(batch[-1][0])+step
   if next_cursor<=cursor:raise RuntimeError(f"Pagination stalled for {interval}")
   cursor=next_cursor;time.sleep(0.15)
- unique={int(row[0]):row for row in rows};ordered=[unique[k] for k in sorted(unique)]
+ # Drop the currently forming candle: its closeTime is not before the snapshot end.
+ unique={int(row[0]):row for row in rows if int(row[6])<end};ordered=[unique[k] for k in sorted(unique)]
  for a,b in zip(ordered,ordered[1:]):
   if int(b[0])-int(a[0])!=step:raise RuntimeError(f"Gap in {interval}: {a[0]} -> {b[0]}")
  return ordered
 def main():
  OUT.mkdir(parents=True,exist_ok=True);end=int(datetime.now(timezone.utc).timestamp()*1000);start=end-DAYS*86400000
- print(f"Fetching BTCUSDT Spot klines: last {DAYS} days")
+ print(f"Fetching BTCUSDT Spot klines: last {DAYS} days (closed candles only)")
  for interval in INTERVALS:
   rows=download(interval,start,end)
   if len(rows)<100:raise RuntimeError(f"Insufficient {interval} candles: {len(rows)}")
@@ -40,6 +41,6 @@ def main():
   with path.open("w",newline="",encoding="utf-8") as handle:
    writer=csv.writer(handle);writer.writerow(["openTime","open","high","low","close","volume","closeTime"])
    for row in rows:writer.writerow([row[0],row[1],row[2],row[3],row[4],row[5],row[6]])
-  print(f"{interval}: {len(rows)} candles -> {path}")
+  print(f"{interval}: {len(rows)} closed candles -> {path}")
  print(f"Data source: {BASE} (public Spot klines; no API key)")
 if __name__=="__main__":main()
