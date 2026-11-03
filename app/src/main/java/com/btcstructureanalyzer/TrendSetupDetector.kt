@@ -23,7 +23,8 @@ data class SetupDetectionResult(
     val direction: AdaptiveDecision,
     val waitReason: SetupWaitReason?,
     val qualityScore: Int,
-    val explanation: String
+    val explanation: String,
+    val diagnosticDetail: String? = null
 )
 
 /**
@@ -67,7 +68,15 @@ object TrendSetupDetector {
         val family = when {
             breakout && directionalBody && body15 >= atr15 * config.minimumBodyAtr -> SetupFamily.TREND_CONTINUATION
             pullbackShape -> SetupFamily.TREND_PULLBACK
-            else -> return wait(SetupWaitReason.NO_15M_PATTERN)
+            else -> {
+                val detail = when {
+                    body15 < atr15 * config.minimumBodyAtr -> "FIFTEEN_MINUTE_BODY_TOO_SMALL"
+                    !directionalBody -> "FIFTEEN_MINUTE_BODY_WRONG_DIRECTION"
+                    !breakout && !nearEma -> "NO_BREAKOUT_OR_EMA_PULLBACK"
+                    else -> "FIFTEEN_MINUTE_PATTERN_NOT_QUALIFIED"
+                }
+                return wait(SetupWaitReason.NO_15M_PATTERN, detail)
+            }
         }
 
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(SetupWaitReason.INSUFFICIENT_DATA)
@@ -77,8 +86,10 @@ object TrendSetupDetector {
         val triggerBody = abs(last5.close - last5.open) >= atr5 * config.minimumBodyAtr
         val avgVolume = previous5.map { it.volume }.average()
         val volumeRatio = if (avgVolume > 0.0) last5.volume / avgVolume else 0.0
-        if (!trigger || !triggerBody || volumeRatio < config.minimumVolumeRatio)
-            return wait(SetupWaitReason.NO_5M_TRIGGER)
+        if (!trigger) return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_BREAKOUT_TRIGGER_NOT_MET")
+        if (!triggerBody) return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_TRIGGER_BODY_TOO_SMALL")
+        if (volumeRatio < config.minimumVolumeRatio)
+            return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_VOLUME_RATIO_TOO_LOW")
 
         val bodyStrength = (abs(last15.close - last15.open) / atr15).coerceIn(0.0, 1.0)
         val volumeStrength = (volumeRatio / 2.0).coerceIn(0.0, 1.0)
@@ -91,9 +102,9 @@ object TrendSetupDetector {
         )
     }
 
-    private fun wait(reason: SetupWaitReason) = SetupDetectionResult(
+    private fun wait(reason: SetupWaitReason, detail: String = reason.name) = SetupDetectionResult(
         SetupFamily.NONE, SetupStatus.WAIT, AdaptiveDecision.WAIT, reason, 0,
-        "Belum ada setup terkonfirmasi: ${reason.name}."
+        "Belum ada setup terkonfirmasi: ${reason.name} / $detail.", detail
     )
 
     private fun validClosedCandles(candles: List<Candle>): Boolean =
