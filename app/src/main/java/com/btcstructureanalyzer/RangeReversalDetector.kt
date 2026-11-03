@@ -22,7 +22,8 @@ data class RangeDetectionResult(
     val direction: AdaptiveDecision,
     val waitReason: RangeWaitReason?,
     val qualityScore: Int,
-    val explanation: String
+    val explanation: String,
+    val diagnosticDetail: String? = null
 )
 
 /** Reversal is allowed only after a shallow boundary sweep/rejection and a separate closed 5m trigger. */
@@ -57,14 +58,35 @@ object RangeReversalDetector {
         val volumeRatio = if (avgVolume > 0.0) last.volume / avgVolume else 0.0
         val maxSweep = atr15 * config.boundaryAtrTolerance
 
-        val supportReject = last.low < support && support - last.low <= maxSweep &&
-            last.close > support && lowerWick / body >= config.minimumWickBodyRatio &&
-            abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        val resistanceReject = last.high > resistance && last.high - resistance <= maxSweep &&
-            last.close < resistance && upperWick / body >= config.minimumWickBodyRatio &&
-            abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        if (supportReject == resistanceReject || volumeRatio < config.minimumVolumeRatio)
-            return wait(RangeWaitReason.NO_BOUNDARY_REJECTION)
+        val bodyAtr = abs(last.close - last.open) / atr15
+        val supportSwept = last.low < support
+        val resistanceSwept = last.high > resistance
+        val supportDepthOk = support - last.low <= maxSweep
+        val resistanceDepthOk = last.high - resistance <= maxSweep
+        val supportReclaimed = last.close > support
+        val resistanceReclaimed = last.close < resistance
+        val supportWickOk = lowerWick / body >= config.minimumWickBodyRatio
+        val resistanceWickOk = upperWick / body >= config.minimumWickBodyRatio
+        val bodyOk = bodyAtr >= config.minimumBodyAtr
+        val supportReject = supportSwept && supportDepthOk && supportReclaimed && supportWickOk && bodyOk
+        val resistanceReject = resistanceSwept && resistanceDepthOk && resistanceReclaimed && resistanceWickOk && bodyOk
+        if (supportReject == resistanceReject) {
+            val detail = when {
+                supportReject && resistanceReject -> "AMBIGUOUS_BOTH_BOUNDARIES_REJECTED"
+                !supportSwept && !resistanceSwept -> "NO_BOUNDARY_SWEEP"
+                supportSwept && !supportDepthOk -> "SUPPORT_SWEEP_TOO_DEEP"
+                resistanceSwept && !resistanceDepthOk -> "RESISTANCE_SWEEP_TOO_DEEP"
+                supportSwept && !supportReclaimed -> "SUPPORT_CLOSE_FAILED_RECLAIM"
+                resistanceSwept && !resistanceReclaimed -> "RESISTANCE_CLOSE_FAILED_RECLAIM"
+                supportSwept && !supportWickOk -> "SUPPORT_WICK_BODY_RATIO_TOO_LOW"
+                resistanceSwept && !resistanceWickOk -> "RESISTANCE_WICK_BODY_RATIO_TOO_LOW"
+                !bodyOk -> "REJECTION_BODY_TOO_SMALL"
+                else -> "BOUNDARY_REJECTION_NOT_UNIQUE"
+            }
+            return wait(RangeWaitReason.NO_BOUNDARY_REJECTION, detail)
+        }
+        if (volumeRatio < config.minimumVolumeRatio)
+            return wait(RangeWaitReason.NO_BOUNDARY_REJECTION, "VOLUME_RATIO_TOO_LOW")
 
         val direction = if (supportReject) AdaptiveDecision.LONG else AdaptiveDecision.SHORT
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(RangeWaitReason.INSUFFICIENT_DATA)
@@ -73,8 +95,9 @@ object RangeReversalDetector {
         val trigger = if (direction == AdaptiveDecision.LONG)
             last5.close > triggerBars.maxOf { it.high } && last5.close > last5.open
         else last5.close < triggerBars.minOf { it.low } && last5.close < last5.open
-        if (!trigger || abs(last5.close - last5.open) < atr5 * config.minimumBodyAtr)
-            return wait(RangeWaitReason.NO_5M_CONFIRMATION)
+        if (!trigger) return wait(RangeWaitReason.NO_5M_CONFIRMATION, "FIVE_MINUTE_TRIGGER_NOT_MET")
+        if (abs(last5.close - last5.open) < atr5 * config.minimumBodyAtr)
+            return wait(RangeWaitReason.NO_5M_CONFIRMATION, "FIVE_MINUTE_TRIGGER_BODY_TOO_SMALL")
 
         val family = if (supportReject) RangeSetupFamily.RANGE_SUPPORT_REJECTION
             else RangeSetupFamily.RANGE_RESISTANCE_REJECTION
@@ -87,9 +110,9 @@ object RangeReversalDetector {
         )
     }
 
-    private fun wait(reason: RangeWaitReason) = RangeDetectionResult(
+    private fun wait(reason: RangeWaitReason, detail: String = reason.name) = RangeDetectionResult(
         RangeSetupFamily.NONE, SetupStatus.WAIT, AdaptiveDecision.WAIT, reason, 0,
-        "Belum ada reversal range terkonfirmasi: ${reason.name}."
+        "Belum ada reversal range terkonfirmasi: ${reason.name} / $detail.", detail
     )
 
     private fun valid(candles: List<Candle>) = candles.all { c ->
