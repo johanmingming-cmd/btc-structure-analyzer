@@ -151,7 +151,11 @@ private fun AnalyzerApp(context: Context) {
     fun reloadSignalHistory() {
         try {
             signalHistory = SignalJournal.read(context)
-            signalHistoryError = null
+            val recovered = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                .getBoolean("signal_journal_recovered_from_backup", false)
+            signalHistoryError = if (recovered) {
+                "Riwayat dibaca dari cadangan karena jurnal utama rusak. Data utama yang rusak tetap disimpan untuk pemeriksaan."
+            } else null
         } catch (error: Exception) {
             signalHistoryError = error.message ?: "Riwayat tidak dapat dibaca; data tidak diubah."
         }
