@@ -90,29 +90,34 @@ object SignalJournal {
                     }
                     return value
                 }
-                fun optionalString(key: String): String? {
-                    if (!o.has(key) || o.isNull(key)) return null
-                    return o.optString(key).takeIf { it.isNotBlank() }
+                fun stringValue(key: String, default: String? = null): String? {
+                    if (!o.has(key) || o.isNull(key)) return default
+                    val value = o.opt(key)
+                    require(value is String) {
+                        "Journal field '$key' at index $i is not a string."
+                    }
+                    return value.takeIf { it.isNotBlank() } ?: default
                 }
+                fun optionalString(key: String): String? = stringValue(key)
                 val time = o.optLong("time", 0L)
-                val symbol = o.optString("symbol")
-                val direction = o.optString("direction")
+                val symbol = stringValue("symbol").orEmpty()
+                val direction = stringValue("direction").orEmpty()
                 val entryLow = requiredPrice("entryLow")
                 val entryHigh = requiredPrice("entryHigh")
                 require(entryLow <= entryHigh) {
                     "Journal record at index $i has an inverted entry range."
                 }
                 SignalRecord(
-                    id=o.optString("id"), time=time, symbol=symbol,
+                    id=stringValue("id").orEmpty(), time=time, symbol=symbol,
                     direction=direction, price=requiredPrice("price"),
                     entryLow=entryLow, entryHigh=entryHigh,
                     stopLoss=requiredPrice("stopLoss"), takeProfit1=requiredPrice("takeProfit1"),
                     takeProfit2=requiredPrice("takeProfit2"), score=o.optInt("score"),
                     supports=levels("supports"), resistances=levels("resistances"),
                     price10m=optionalPrice("price10m"), price15m=optionalPrice("price15m"), price30m=optionalPrice("price30m"), price60m=optionalPrice("price60m"),
-                    result10m=o.optString("result10m","PENDING"), result15m=o.optString("result15m","PENDING"), result30m=o.optString("result30m","PENDING"),
-                    result60m=o.optString("result60m","PENDING"),
-                    entryStatus=o.optString("entryStatus","BELUM DICEK"),
+                    result10m=stringValue("result10m", "PENDING")!!, result15m=stringValue("result15m", "PENDING")!!, result30m=stringValue("result30m", "PENDING")!!,
+                    result60m=stringValue("result60m", "PENDING")!!,
+                    entryStatus=stringValue("entryStatus", "BELUM DICEK")!!,
                     evaluationTime10m=o.optLong("evaluationTime10m").takeIf { o.has("evaluationTime10m") && !o.isNull("evaluationTime10m") && it > 0L },
                     evaluationTime15m=o.optLong("evaluationTime15m").takeIf { o.has("evaluationTime15m") && !o.isNull("evaluationTime15m") && it > 0L },
                     evaluationTime30m=o.optLong("evaluationTime30m").takeIf { o.has("evaluationTime30m") && !o.isNull("evaluationTime30m") && it > 0L },
@@ -121,9 +126,9 @@ object SignalJournal {
                     priceSource15m=optionalString("priceSource15m"),
                     priceSource30m=optionalString("priceSource30m"),
                     priceSource60m=optionalString("priceSource60m"),
-                    tradeOutcome=o.optString("tradeOutcome", "PENDING"),
+                    tradeOutcome=stringValue("tradeOutcome", "PENDING")!!,
                     tradeOutcomeTime=o.optLong("tradeOutcomeTime").takeIf { o.has("tradeOutcomeTime") && !o.isNull("tradeOutcomeTime") && it > 0L },
-                    cohort=o.optString("cohort", "LEGACY")
+                    cohort=stringValue("cohort", "LEGACY")!!
                 ).also { record ->
                     require(record.time > 0L && record.symbol.isNotBlank() && record.direction.isNotBlank()) {
                         "Journal record at index $i has invalid required identity fields."
