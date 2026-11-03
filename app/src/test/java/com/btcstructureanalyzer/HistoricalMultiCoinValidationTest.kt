@@ -135,4 +135,34 @@ class HistoricalMultiCoinValidationTest {
    }
   }
  }
+
+ @Test fun compareDefaultVsAtrToleranceOnNonOverlappingOutOfSampleWindows(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val profiles=listOf(
+   "default" to AdaptiveEngineConfig(),
+   "tolerance_035" to AdaptiveEngineConfig(rangeSetup=RangeDetectionConfig(boundaryAtrTolerance=0.35))
+  )
+  for((profile,config) in profiles){
+   for(horizon in listOf(12,36,72)){
+    val aggregates=MultiCoinMetricsAggregator()
+    for(symbol in symbols){
+     val coin=File(root,symbol)
+     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+     val result=WalkForwardEvaluator.evaluate(m5,listOf(horizon),0.60,evaluationStep=horizon){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),config
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+    for(row in aggregates.results()){
+     println("MULTI_COIN_NONOVERLAP profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    }
+   }
+  }
+ }
 }
