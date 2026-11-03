@@ -1,5 +1,6 @@
 package com.btcstructureanalyzer
 import org.junit.Test
+import org.json.JSONObject
 import java.io.File
 
 /** Multi-coin historical research; every selected pair must have complete closed-candle data. */
@@ -26,11 +27,15 @@ class HistoricalMultiCoinValidationTest {
   require(root.isDirectory) { "Multi-coin history directory missing: ${root.absolutePath}" }
   val manifest=File(root,"manifest.json")
   require(manifest.isFile) { "Fresh dataset manifest missing: ${manifest.absolutePath}" }
-  val manifestText=manifest.readText()
-  require(manifestText.contains("schemaVersion") && manifestText.contains("Binance Spot public klines")) { "Unsupported or invalid dataset manifest" }
-  val symbolsBlock=Regex("\\\"symbols\\\"\\s*:\\s*\\[([^]]*)]").find(manifestText)?.groupValues?.get(1)
-      ?: error("Manifest symbols list missing")
-  val symbols=Regex("\\\"([A-Z0-9]+USDT)\\\"").findAll(symbolsBlock).map{it.groupValues[1]}.toList()
+  val manifestJson=JSONObject(manifest.readText())
+  require(manifestJson.optInt("schemaVersion",-1)==1) { "Unsupported dataset manifest schema" }
+  require(manifestJson.optString("source")=="Binance Spot public klines") { "Unexpected historical data source" }
+  require(manifestJson.optInt("requestedCoins",0)>=10) { "Manifest must request at least 10 coins" }
+  val intervals=manifestJson.getJSONArray("intervals").let{array->(0 until array.length()).map{array.getString(it)}.toSet()}
+  require(intervals==setOf("1h","15m","5m")) { "Manifest intervals must be exactly 1h, 15m and 5m" }
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  require(symbols.all{Regex("[A-Z0-9]+USDT").matches(it)}) { "Manifest contains an invalid USDT symbol" }
   require(symbols.size>=10 && symbols.distinct().size==symbols.size) { "Manifest must list at least 10 unique symbols" }
   val actualDirs=root.listFiles()?.filter{it.isDirectory}?.map{it.name}?.toSet().orEmpty()
   require(actualDirs==symbols.toSet()) { "Dataset folders do not exactly match fresh manifest symbols" }
