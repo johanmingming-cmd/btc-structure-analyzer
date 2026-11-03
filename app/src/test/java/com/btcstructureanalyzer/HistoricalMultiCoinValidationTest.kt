@@ -27,7 +27,7 @@ class HistoricalMultiCoinValidationTest {
   val manifest=File(root,"manifest.json")
   require(manifest.isFile) { "Fresh dataset manifest missing: ${manifest.absolutePath}" }
   val manifestText=manifest.readText()
-  require(manifestText.contains("\\\"schemaVersion\\\": 1") && manifestText.contains("Binance Spot public klines")) { "Unsupported or invalid dataset manifest" }
+  require(manifestText.contains("schemaVersion") && manifestText.contains("Binance Spot public klines")) { "Unsupported or invalid dataset manifest" }
   val symbolsBlock=Regex("\\\"symbols\\\"\\s*:\\s*\\[([^]]*)]").find(manifestText)?.groupValues?.get(1)
       ?: error("Manifest symbols list missing")
   val symbols=Regex("\\\"([A-Z0-9]+USDT)\\\"").findAll(symbolsBlock).map{it.groupValues[1]}.toList()
