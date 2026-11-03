@@ -227,4 +227,45 @@ class HistoricalMultiCoinValidationTest {
   }
  }
 
+
+ @Test fun compareEachRangeFilterOneFactorOnNonOverlappingDevelopmentWindows(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val defaults=RangeDetectionConfig()
+  val profiles=listOf(
+   "default" to defaults,
+   "lookback_16" to defaults.copy(boundaryLookback=16),
+   "tolerance_035" to defaults.copy(boundaryAtrTolerance=0.35),
+   "wick_090" to defaults.copy(minimumWickBodyRatio=0.90),
+   "volume_060" to defaults.copy(minimumVolumeRatio=0.60),
+   "body_008" to defaults.copy(minimumBodyAtr=0.08)
+  )
+  for((profile,rangeConfig) in profiles){
+   for(horizon in listOf(12,36,72)){
+    val aggregates=MultiCoinMetricsAggregator()
+    val config=AdaptiveEngineConfig(rangeSetup=rangeConfig)
+    for(symbol in symbols){
+     val coin=File(root,symbol)
+     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+     val segment=developmentWindow(m5)
+     val result=WalkForwardEvaluator.evaluateSegment(
+      m5,listOf(horizon),segment.start,segment.end,evaluationStep=horizon
+     ){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
+       config
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+    for(row in aggregates.results()){
+     println("MULTI_COIN_DEVELOPMENT_ONE_FACTOR_NONOVERLAP split=development samplingStepBars=$horizon overlapping=false profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    }
+   }
+  }
+ }
+
 }
