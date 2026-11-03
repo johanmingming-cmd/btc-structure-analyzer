@@ -120,7 +120,7 @@ def main():
   raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
  temp=OUT/"manifest.json.tmp"
- temp.write_text(json.dumps(manifest,indent=2)+"\\n",encoding="utf-8")
+ temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
  temp.replace(OUT/"manifest.json")
  print("Validated fresh multi-coin universe: "+", ".join(accepted),flush=True)
  print(f"Downloaded {len(accepted)} fresh coins x 3 intervals; public endpoints, no API key.")
