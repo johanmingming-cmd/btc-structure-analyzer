@@ -13,9 +13,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Infrastructure smoke tests only. These do not exercise the production journal or perform migration.
- * They establish that Android's on-device SQLite transaction behavior is available in CI before
- * a production migration implementation is introduced.
+ * On-device tests for SQLite transaction behavior, isolated journal migration,
+ * backup-source validation, and detection of incomplete or corrupted stored rows.
  */
 @RunWith(AndroidJUnit4::class)
 class SQLiteMigrationInfrastructureTest {
@@ -280,6 +279,144 @@ class SQLiteMigrationInfrastructureTest {
             assertEquals(0, second.recordCount)
             assertEquals(emptyList<SignalRecord>(), store.readAll())
             assertEquals("ok", store.integrityCheck())
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun unsupportedDatabaseUpgradeFailsWithoutDroppingLegacyData() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_unsupported_upgrade.db"
+        context.deleteDatabase(name)
+        context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { legacyDb ->
+            legacyDb.execSQL("CREATE TABLE legacy_data (value TEXT NOT NULL)")
+            legacyDb.execSQL(
+                "INSERT INTO legacy_data (value) VALUES (?)",
+                arrayOf("must-remain")
+            )
+            legacyDb.version = 0
+        }
+
+        try {
+            SignalJournalDatabase(context, name).use { it.writableDatabase }
+            throw AssertionError("Unsupported schema upgrade must be rejected.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("Unsupported journal database upgrade"))
+        }
+
+        context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null).use { legacyDb ->
+            legacyDb.rawQuery("SELECT value FROM legacy_data", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("must-remain", cursor.getString(0))
+            }
+        }
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun absentLegacyKeyMeansEmptyButMalformedOrWrongTypeBackupFailsClosed() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val prefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        val absentKey = "test_absent_legacy_journal"
+        val malformedKey = "test_malformed_legacy_journal"
+        val wrongTypeKey = "test_wrong_type_legacy_journal"
+
+        prefs.edit().remove(absentKey).remove(malformedKey).remove(wrongTypeKey).commit()
+        assertEquals(emptyList<SignalRecord>(), SignalJournalDatabase.readLegacyRecords(prefs, absentKey))
+
+        val malformed = "[{"
+        prefs.edit().putString(malformedKey, malformed).commit()
+        try {
+            SignalJournalDatabase.readLegacyRecords(prefs, malformedKey)
+            throw AssertionError("A present malformed backup must not be treated as empty.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("existing data was left untouched"))
+        }
+        assertEquals(malformed, prefs.getString(malformedKey, null))
+
+        prefs.edit().putInt(wrongTypeKey, 42).commit()
+        try {
+            SignalJournalDatabase.readLegacyRecords(prefs, wrongTypeKey)
+            throw AssertionError("A present non-string backup must not be treated as empty.")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("not stored as a string"))
+        }
+        assertEquals(42, prefs.getInt(wrongTypeKey, -1))
+        prefs.edit().remove(malformedKey).remove(wrongTypeKey).commit()
+    }
+
+    @Test
+    fun migrationMarkerDoesNotTrustCorruptedPayloadOrMismatchedRecordId() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_corrupt_payload.db"
+        context.deleteDatabase(name)
+        val record = sampleRecord("expected-id", "BTCUSDT", 1000L)
+
+        SignalJournalDatabase(context, name).use { store ->
+            store.migrateIfNeeded(listOf(record))
+            store.writableDatabase.execSQL(
+                "UPDATE signal_records SET payload_json = ? WHERE ordinal = 0",
+                arrayOf("[{broken]")
+            )
+            assertEquals(false, store.isMigrated())
+            try {
+                store.migrateIfNeeded(listOf(record))
+                throw AssertionError("A completion marker with corrupted payload must not be trusted.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("could not be read"))
+            }
+            try {
+                store.readAll()
+                throw AssertionError("Corrupted payload must not be returned.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("could not be read"))
+            }
+        }
+        context.deleteDatabase(name)
+
+        val mismatchName = "journal_migration_record_id_mismatch.db"
+        context.deleteDatabase(mismatchName)
+        SignalJournalDatabase(context, mismatchName).use { store ->
+            store.migrateIfNeeded(listOf(record))
+            store.writableDatabase.execSQL(
+                "UPDATE signal_records SET record_id = ? WHERE ordinal = 0",
+                arrayOf("different-id")
+            )
+            assertEquals(false, store.isMigrated())
+            try {
+                store.readAll()
+                throw AssertionError("Mismatched record_id must not be returned.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("record_id does not match"))
+            }
+        }
+        context.deleteDatabase(mismatchName)
+    }
+
+    @Test
+    fun migrationMarkerDoesNotTrustNonContiguousOrdinals() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val name = "journal_migration_ordinal_gap.db"
+        context.deleteDatabase(name)
+        val records = listOf(
+            sampleRecord("first", "BTCUSDT", 1000L),
+            sampleRecord("second", "ETHUSDT", 2000L)
+        )
+
+        SignalJournalDatabase(context, name).use { store ->
+            store.migrateIfNeeded(records)
+            store.writableDatabase.execSQL("DELETE FROM signal_records WHERE ordinal = 0")
+            store.writableDatabase.execSQL(
+                "UPDATE journal_meta SET value = ? WHERE key = ?",
+                arrayOf("1:1", "shared_preferences_json_v1")
+            )
+            assertEquals(false, store.isMigrated())
+            try {
+                store.readAll()
+                throw AssertionError("A non-contiguous ordinal sequence must not be returned.")
+            } catch (expected: IllegalStateException) {
+                assertTrue(expected.message!!.contains("ordinals are not contiguous"))
+            }
         }
         context.deleteDatabase(name)
     }

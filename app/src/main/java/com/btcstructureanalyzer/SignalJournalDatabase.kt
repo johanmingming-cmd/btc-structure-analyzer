@@ -1,6 +1,7 @@
 package com.btcstructureanalyzer
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
@@ -63,6 +64,7 @@ internal class SignalJournalDatabase(
                 check(markedCount == actualCount) {
                     "Journal migration marker count mismatch: marker=$markedCount, database=$actualCount."
                 }
+                validateStoredRows(db, expectedCount = actualCount)
                 db.setTransactionSuccessful()
                 return MigrationResult(migrated = false, recordCount = actualCount)
             }
@@ -84,6 +86,7 @@ internal class SignalJournalDatabase(
             check(inserted == records.size) {
                 "Journal migration row count mismatch: expected ${records.size}, found $inserted."
             }
+            validateStoredRows(db, expectedCount = inserted)
             val marker = android.content.ContentValues().apply {
                 put("key", MIGRATION_MARKER)
                 put("value", "$DATABASE_VERSION:$inserted")
@@ -96,29 +99,55 @@ internal class SignalJournalDatabase(
         }
     }
 
-    fun readAll(): List<SignalRecord> {
-        val result = mutableListOf<SignalRecord>()
-        readableDatabase.rawQuery(
-            "SELECT payload_json FROM signal_records ORDER BY ordinal ASC",
-            null
-        ).use { cursor ->
-            while (cursor.moveToNext()) {
-                val decoded = SignalJournal.parseRecords(cursor.getString(0))
-                check(decoded.size == 1) { "Stored journal row must contain exactly one record." }
-                result += decoded.single()
-            }
-        }
-        return result
-    }
+    fun readAll(): List<SignalRecord> = validateStoredRows(readableDatabase)
 
-    /** True only when the completion marker is valid and agrees with the stored row count. */
-    fun isMigrated(): Boolean {
+    /**
+     * A completion marker is trusted only when every stored row decodes to one record,
+     * record_id matches the payload, and ordinals are contiguous from zero.
+     */
+    fun isMigrated(): Boolean = runCatching {
         val db = readableDatabase
         val marker = migrationMarker(db) ?: return false
         val parts = marker.split(":")
         if (parts.size != 2 || parts[0].toIntOrNull() != DATABASE_VERSION) return false
         val markedCount = parts[1].toIntOrNull() ?: return false
-        return markedCount >= 0 && markedCount == rowCount(db)
+        if (markedCount < 0 || markedCount != rowCount(db)) return false
+        validateStoredRows(db, expectedCount = markedCount)
+        true
+    }.getOrDefault(false)
+
+    private fun validateStoredRows(
+        db: SQLiteDatabase,
+        expectedCount: Int? = null
+    ): List<SignalRecord> {
+        val result = mutableListOf<SignalRecord>()
+        db.rawQuery(
+            "SELECT ordinal, record_id, payload_json FROM signal_records ORDER BY ordinal ASC",
+            null
+        ).use { cursor ->
+            var expectedOrdinal = 0
+            while (cursor.moveToNext()) {
+                val ordinal = cursor.getInt(0)
+                check(ordinal == expectedOrdinal) {
+                    "Stored journal ordinals are not contiguous: expected $expectedOrdinal, found $ordinal."
+                }
+                val recordId = cursor.getString(1)
+                val decoded = SignalJournal.parseRecords(cursor.getString(2))
+                check(decoded.size == 1) { "Stored journal row must contain exactly one record." }
+                val record = decoded.single()
+                check(record.id == recordId) {
+                    "Stored journal record_id does not match its payload at ordinal $ordinal."
+                }
+                result += record
+                expectedOrdinal++
+            }
+            if (expectedCount != null) {
+                check(expectedOrdinal == expectedCount) {
+                    "Stored journal row count mismatch: expected $expectedCount, found $expectedOrdinal."
+                }
+            }
+        }
+        return result
     }
 
     fun integrityCheck(): String =
@@ -140,6 +169,25 @@ internal class SignalJournalDatabase(
         }
 
     companion object {
+        /**
+         * Distinguishes an absent legacy key from a present-but-corrupt backup.
+         * Malformed and non-string values stop migration instead of becoming an empty journal.
+         */
+        fun readLegacyRecords(preferences: SharedPreferences, key: String): List<SignalRecord> {
+            if (!preferences.contains(key)) return emptyList()
+            val raw = try {
+                preferences.getString(key, null)
+            } catch (error: ClassCastException) {
+                throw IllegalStateException(
+                    "Legacy signal journal exists but is not stored as a string; backup was left untouched.",
+                    error
+                )
+            } ?: throw IllegalStateException(
+                "Legacy signal journal key exists but has no readable string value; backup was left untouched."
+            )
+            return SignalJournal.parseRecords(raw)
+        }
+
         const val DATABASE_NAME = "prediction_lab_journal.db"
         private const val DATABASE_VERSION = 1
         private const val MIGRATION_MARKER = "shared_preferences_json_v1"

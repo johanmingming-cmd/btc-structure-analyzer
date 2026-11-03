@@ -18,7 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -105,6 +105,7 @@ private fun AnalyzerApp(context: Context) {
     var spotLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
+    var signalHistoryError by remember { mutableStateOf<String?>(null) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
     var historyRefreshError by remember { mutableStateOf<String?>(null) }
     var historyRefreshMessage by remember { mutableStateOf<String?>(null) }
@@ -147,6 +148,14 @@ private fun AnalyzerApp(context: Context) {
             if (p.size == 4) runCatching { SavedRun(p[0].toLong(), p[1].toDouble(), p[2], p[3]) }.getOrNull() else null
         }
     }
+    fun reloadSignalHistory() {
+        try {
+            signalHistory = SignalJournal.read(context)
+            signalHistoryError = null
+        } catch (e: Exception) {
+            signalHistoryError = e.message ?: "Riwayat sinyal tidak dapat dibaca"
+        }
+    }
     fun refresh() {
         scope.launch {
             loading = true
@@ -175,7 +184,7 @@ private fun AnalyzerApp(context: Context) {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
+    LaunchedEffect(Unit) { loadHistory(); reloadSignalHistory(); refresh() }
     LaunchedEffect(selected) {
         if (selected == "Pengaturan") {
             while (true) {
@@ -549,7 +558,7 @@ private fun AnalyzerApp(context: Context) {
                                             SignalJournal.recordSignals(context, scannedCoins)
                                         }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; reloadSignalHistory(); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                                     Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
@@ -617,6 +626,7 @@ private fun AnalyzerApp(context: Context) {
                     item {
                         Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                         Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
+                        signalHistoryError?.let { Text("Riwayat tidak dapat dibaca: $it", color = Red, fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -656,7 +666,7 @@ private fun AnalyzerApp(context: Context) {
                                         } else if (dueEvaluations.isNotEmpty()) {
                                             evalPrefs.edit().remove("history_eval_last_error").apply()
                                         }
-                                        signalHistory = SignalJournal.read(context)
+                                        reloadSignalHistory()
                                         historyRefreshMessage = if (dueEvaluations.isEmpty()) {
                                             "Belum ada evaluasi yang jatuh tempo untuk diproses. Evaluasi berikutnya akan berjalan setelah waktunya tercapai."
                                         } else {
@@ -664,7 +674,6 @@ private fun AnalyzerApp(context: Context) {
                                         }
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
-                                        signalHistory = SignalJournal.read(context)
                                     } finally {
                                         historyRefreshLoading = false
                                     }
@@ -688,7 +697,7 @@ private fun AnalyzerApp(context: Context) {
                         exportError?.let { Text("Export gagal: $it", color = Red, fontSize = 11.sp) }
                     }
                     if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
-                    items(signalHistory, key = { it.id }) { run ->
+                    itemsIndexed(signalHistory, key = { index, run -> "${run.id}:$index" }) { _, run ->
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
