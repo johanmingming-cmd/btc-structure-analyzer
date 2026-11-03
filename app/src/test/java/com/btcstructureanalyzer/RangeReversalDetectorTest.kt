@@ -14,19 +14,20 @@ class RangeReversalDetectorTest {
 
     @Test fun confirmsSupportSweepOnlyAfterFiveMinuteBullishBreakout() {
         val m15 = base15()
-        m15[m15.lastIndex] = Candle(30, 100.5, 101.0, 98.8, 100.8, 1400.0, 31)
+        m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 98.8, 100.3, 1400.0, 31)
         val m5 = base5()
         m5[m5.lastIndex] = Candle(20, 100.0, 102.0, 99.8, 101.8, 1300.0, 21)
 
         val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, m5)
-        assertEquals(SetupStatus.CONFIRMED, result.status)
+        assertEquals("Expected a confirmed support rejection, got ${result.waitReason}: ${result.explanation}",
+            SetupStatus.CONFIRMED, result.status)
         assertEquals(RangeSetupFamily.RANGE_SUPPORT_REJECTION, result.family)
         assertEquals(AdaptiveDecision.LONG, result.direction)
     }
 
     @Test fun rejectsDeepBoundaryBreakInsteadOfCallingItRejection() {
         val m15 = base15()
-        m15[m15.lastIndex] = Candle(30, 100.5, 101.0, 95.0, 100.8, 1400.0, 31)
+        m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 95.0, 100.3, 1400.0, 31)
         val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
         assertEquals(SetupStatus.WAIT, result.status)
         assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
