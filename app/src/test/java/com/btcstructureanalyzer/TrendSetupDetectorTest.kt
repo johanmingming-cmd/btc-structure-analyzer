@@ -59,6 +59,26 @@ class TrendSetupDetectorTest {
         }
     }
 
+    @Test fun rejectsOutOfOrderCandlesAtDetectorBoundary() {
+        val fifteen = series(35).toMutableList()
+        fifteen[fifteen.lastIndex] = fifteen[fifteen.lastIndex].copy(openTime = 10L, closeTime = 11L)
+        val result = TrendSetupDetector.detect(
+            AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG, fifteen, series(20)
+        )
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(SetupWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
+    @Test fun rejectsDuplicateCandleTimestampsAtDetectorBoundary() {
+        val five = series(20).toMutableList()
+        five[five.lastIndex] = five[five.lastIndex].copy(openTime = 18L, closeTime = 19L)
+        val result = TrendSetupDetector.detect(
+            AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG, series(35), five
+        )
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(SetupWaitReason.INSUFFICIENT_DATA, result.waitReason)
+    }
+
     @Test fun waitsOutsideTrendRegime() {
         val result = TrendSetupDetector.detect(
             AdaptiveRegime.RANGE, AdaptiveDecision.LONG, AdaptiveDecision.LONG, series(35), series(20)
