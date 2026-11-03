@@ -64,7 +64,8 @@ jobs:
           from pathlib import Path
           manifest=json.loads(Path("build/multi-coin-history/manifest.json").read_text())
           print(json.dumps(manifest, indent=2))
-          assert len(manifest["symbols"]) >= 10
+          assert len(manifest["symbols"]) == manifest["requestedCoins"]
+          assert manifest["requestedCoins"] >= 1
           assert manifest["requestedDays"] >= 180
           assert set(manifest["datasetCoverage"]) == set(manifest["symbols"])
           PY
