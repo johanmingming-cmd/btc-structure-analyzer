@@ -43,8 +43,9 @@ object TrendSetupDetector {
         if (bias1h !in listOf(AdaptiveDecision.LONG, AdaptiveDecision.SHORT) || bias1h != bias15m)
             return wait(SetupWaitReason.TIMEFRAME_DISAGREEMENT)
         if (config.atrPeriod < 2 || config.emaPeriod < 2 || config.breakoutLookback < 3 ||
-            config.pullbackMaxDistanceAtr <= 0.0 || config.minimumBodyAtr < 0.0 ||
-            config.minimumVolumeRatio < 0.0) {
+            !config.pullbackMaxDistanceAtr.isFinite() || config.pullbackMaxDistanceAtr <= 0.0 ||
+            !config.minimumBodyAtr.isFinite() || config.minimumBodyAtr < 0.0 ||
+            !config.minimumVolumeRatio.isFinite() || config.minimumVolumeRatio < 0.0) {
             return wait(SetupWaitReason.INSUFFICIENT_DATA)
         }
         if (candles15m.size < max(config.emaPeriod, config.atrPeriod + config.breakoutLookback + 1) ||

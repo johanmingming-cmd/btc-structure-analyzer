@@ -43,6 +43,22 @@ class TrendSetupDetectorTest {
         assertEquals(SetupWaitReason.TIMEFRAME_DISAGREEMENT, result.waitReason)
     }
 
+    @Test fun rejectsNonFiniteSetupThresholds() {
+        val invalidConfigs = listOf(
+            SetupDetectionConfig(pullbackMaxDistanceAtr = Double.NaN),
+            SetupDetectionConfig(minimumBodyAtr = Double.POSITIVE_INFINITY),
+            SetupDetectionConfig(minimumVolumeRatio = Double.NaN)
+        )
+        invalidConfigs.forEach { config ->
+            val result = TrendSetupDetector.detect(
+                AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG,
+                series(35), series(20), config
+            )
+            assertEquals(SetupStatus.WAIT, result.status)
+            assertEquals(SetupWaitReason.INSUFFICIENT_DATA, result.waitReason)
+        }
+    }
+
     @Test fun waitsOutsideTrendRegime() {
         val result = TrendSetupDetector.detect(
             AdaptiveRegime.RANGE, AdaptiveDecision.LONG, AdaptiveDecision.LONG, series(35), series(20)
