@@ -222,7 +222,7 @@ class HistoricalMultiCoinValidationTest {
     }
    }
    for(row in aggregates.results()){
-    println("THREE_WAY_BASELINE segment=$segmentName samplingStepBars=$horizon overlapping=false horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    println("THREE_WAY_BASELINE segment=$segmentName samplingStepBars=${row.horizonBars} overlapping=false horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
    }
   }
  }
