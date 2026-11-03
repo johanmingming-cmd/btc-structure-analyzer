@@ -150,9 +150,10 @@ def main():
  try:
   accepted=[]
   dataset_coverage={}
-  print(f"Checking {len(candidates)} eligible USDT Spot candidates for {COUNT} complete datasets.",flush=True)
+  target_count=len(candidates) if os.environ.get("MULTI_HISTORY_SYMBOLS","").strip() else COUNT
+  print(f"Checking {len(candidates)} eligible USDT Spot candidates for {target_count} complete datasets.",flush=True)
   for symbol in candidates:
-   if len(accepted)>=COUNT:
+   if len(accepted)>=target_count:
     break
    datasets={}
    try:
@@ -171,9 +172,9 @@ def main():
     if partial.exists(): shutil.rmtree(partial)
     print(f"SKIPPED {symbol}: {exc}",flush=True)
    time.sleep(0.15)
-  if len(accepted)<COUNT:
-   raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
-  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"requestedDays":DAYS,"universeSelection":"explicit MULTI_HISTORY_SYMBOLS" if os.environ.get("MULTI_HISTORY_SYMBOLS","").strip() else "current 24h USDT quote-volume ranking at download time","symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM,"datasetCoverage":dataset_coverage}
+  if len(accepted)<target_count:
+   raise RuntimeError(f"Only {len(accepted)}/{target_count} pairs had complete, gap-free history; see SKIPPED diagnostics.")
+  manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":target_count,"requestedDays":DAYS,"universeSelection":"explicit MULTI_HISTORY_SYMBOLS" if os.environ.get("MULTI_HISTORY_SYMBOLS","").strip() else "current 24h USDT quote-volume ranking at download time","symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM,"datasetCoverage":dataset_coverage}
   temp=staging/"manifest.json.tmp"
   temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
   temp.replace(staging/"manifest.json")
