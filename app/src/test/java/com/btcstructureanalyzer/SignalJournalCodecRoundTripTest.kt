@@ -92,3 +92,54 @@ class SignalJournalCodecRoundTripTest {
         assertEquals(listOf(legacy), SignalJournal.parseRecords(SignalJournal.serializeRecords(listOf(legacy))))
     }
 }
+
+
+    @Test
+    fun olderJournalSchemaWithoutNewerOptionalFieldsUsesSafeLegacyDefaults() {
+        // Represents a record written before horizon evaluation, trade outcome, and cohort fields existed.
+        val oldRecord = """[{
+            "id":"old-1",
+            "time":1700000000000,
+            "symbol":"BTCUSDT",
+            "direction":"LONG",
+            "price":65000.0,
+            "entryLow":64980.0,
+            "entryHigh":65020.0,
+            "stopLoss":64800.0,
+            "takeProfit1":65200.0,
+            "takeProfit2":65400.0,
+            "score":80,
+            "supports":[64500.0],
+            "resistances":[65500.0]
+        }]"""
+
+        val restored = SignalJournal.parseRecords(oldRecord).single()
+
+        assertEquals("old-1", restored.id)
+        assertEquals(1700000000000L, restored.time)
+        assertEquals(emptyList<Double>(), restored.supports.takeLast(0))
+        assertEquals(null, restored.price10m)
+        assertEquals(null, restored.price15m)
+        assertEquals(null, restored.price30m)
+        assertEquals(null, restored.price60m)
+        assertEquals("PENDING", restored.result10m)
+        assertEquals("PENDING", restored.result15m)
+        assertEquals("PENDING", restored.result30m)
+        assertEquals("PENDING", restored.result60m)
+        assertEquals("BELUM DICEK", restored.entryStatus)
+        assertEquals(null, restored.evaluationTime10m)
+        assertEquals(null, restored.evaluationTime15m)
+        assertEquals(null, restored.evaluationTime30m)
+        assertEquals(null, restored.evaluationTime60m)
+        assertEquals(null, restored.priceSource10m)
+        assertEquals(null, restored.priceSource15m)
+        assertEquals(null, restored.priceSource30m)
+        assertEquals(null, restored.priceSource60m)
+        assertEquals("PENDING", restored.tradeOutcome)
+        assertEquals(null, restored.tradeOutcomeTime)
+        assertEquals("LEGACY", restored.cohort)
+
+        // Re-encoding must retain the record and its original core identity/price data.
+        val roundTripped = SignalJournal.parseRecords(SignalJournal.serializeRecords(listOf(restored))).single()
+        assertEquals(restored, roundTripped)
+    }
