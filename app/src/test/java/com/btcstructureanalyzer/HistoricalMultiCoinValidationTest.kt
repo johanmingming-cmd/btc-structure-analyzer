@@ -4,6 +4,16 @@ import java.io.File
 
 /** Multi-coin historical research; every selected pair must have complete closed-candle data. */
 class HistoricalMultiCoinValidationTest {
+ private data class Aggregate(
+  var candidates:Int=0,
+  var signals:Int=0,
+  var hits:Int=0,
+  var misses:Int=0,
+  var neutral:Int=0,
+  var waits:Int=0,
+  var signedReturnSum:Double=0.0,
+  var maxAbsReturn:Double=0.0
+ )
  private fun load(file:File):List<Candle>{
   require(file.isFile) { "Required historical dataset is missing: ${file.absolutePath}" }
   return file.readLines().drop(1).filter{it.isNotBlank()}.map{line->
@@ -17,8 +27,7 @@ class HistoricalMultiCoinValidationTest {
   require(root.isDirectory) { "Multi-coin history directory missing: ${root.absolutePath}" }
   val coins=root.listFiles()?.filter{it.isDirectory}?.sortedBy{it.name}.orEmpty()
   require(coins.size>=10) { "Expected at least 10 coin datasets, found ${coins.size}" }
-  val totals=mutableMapOf<Int,MutableList<Double>>()
-  val counts=mutableMapOf<Int,IntArray>()
+  val aggregates=mutableMapOf<Int,Aggregate>()
   for(coin in coins){
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
    require(h1.size>1000 && m15.size>4000 && m5.size>12000) { "Insufficient history for ${coin.name}: ${h1.size}/${m15.size}/${m5.size}" }
@@ -32,13 +41,23 @@ class HistoricalMultiCoinValidationTest {
    println("MULTI_COIN_DATASET symbol=${coin.name} bars1h=${h1.size} bars15m=${m15.size} bars5m=${m5.size}")
    result.horizons.forEach{row->
     println("MULTI_COIN_METRIC symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
-    val v=totals.getOrPut(row.horizonBars){mutableListOf()};v.addAll(listOf(row.evaluated.toDouble(),row.directionalHits.toDouble(),row.waitCount.toDouble(),row.candidateCount.toDouble()))
+    val aggregate=aggregates.getOrPut(row.horizonBars){Aggregate()}
+    aggregate.candidates+=row.candidateCount
+    aggregate.signals+=row.evaluated
+    aggregate.hits+=row.directionalHits
+    aggregate.misses+=row.misses
+    aggregate.neutral+=row.neutral
+    aggregate.waits+=row.waitCount
+    aggregate.signedReturnSum+=(row.meanSignedReturnPercent?:0.0)*row.evaluated
+    aggregate.maxAbsReturn=maxOf(aggregate.maxAbsReturn,row.maxAbsoluteReturnPercent?:0.0)
    }
   }
-  for((h,v) in totals.toSortedMap()){
-   val evaluated=v[0].toInt();val hits=v[1].toInt();val waits=v[2].toInt();val candidates=v[3].toInt()
-   println("MULTI_COIN_AGGREGATE horizonMinutes=${h*5} coins=${coins.size} signals=$evaluated directionalHits=$hits waits=$waits candidates=$candidates coveragePct=${if(candidates==0)0.0 else evaluated*100.0/candidates} hitRatePct=${if(evaluated==0)0.0 else hits*100.0/evaluated}")
+  for((h,a) in aggregates.toSortedMap()){
+   val coverage=if(a.candidates==0)0.0 else a.signals*100.0/a.candidates
+   val hitRate=if(a.signals==0)0.0 else a.hits*100.0/a.signals
+   val meanReturn=if(a.signals==0)null else a.signedReturnSum/a.signals
+   println("MULTI_COIN_AGGREGATE horizonMinutes=${h*5} coins=${coins.size} candidates=${a.candidates} signals=${a.signals} hits=${a.hits} misses=${a.misses} neutral=${a.neutral} waits=${a.waits} coveragePct=$coverage hitRatePct=$hitRate meanSignedReturnPct=$meanReturn maxAbsReturnPct=${a.maxAbsReturn}")
   }
-  require(totals.size==3) { "Expected aggregate metrics for 1h, 3h and 6h horizons" }
+  require(aggregates.keys==setOf(12,36,72)) { "Expected aggregate metrics for 1h, 3h and 6h horizons" }
  }
 }
