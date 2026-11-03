@@ -20,8 +20,8 @@ Status: design/audit only. No SQLite migration is implemented by this document.
 2. The journal's order is meaningful. Do not reconstruct ordering from timestamps because timestamps can tie. Store an explicit ordinal and read with `ORDER BY ordinal ASC`.
 3. The existing SharedPreferences value must remain intact as a backup after migration. Do not clear or rewrite it during initial migration.
 4. A malformed backup must stop migration. Never treat a parse failure as an empty journal and never mark migration complete after a failed parse.
-5. The existing parser currently validates object entries and required symbol/price, but support/resistance arrays and malformed optional values still have permissive filtering/default behavior. Before using it as a lossless migration validator, define and test strict handling for malformed nested values without rejecting legitimate historical optional-field omissions.
-6. JVM unit tests currently exercise the JSON parser, not Android SQLite transactions. Passing those tests alone cannot prove migration rollback or persistence behavior.
+5. The isolated audit parser now rejects malformed numeric types, non-finite/non-positive prices and levels, malformed timestamps/scores, invalid required identity fields, and malformed optional numeric fields. Missing newer optional fields retain explicit legacy defaults.
+6. Android instrumentation tests now exercise the isolated SQLite store for transaction rollback, persistence after reopen, idempotency, duplicate IDs, source order, >2,000 records, malformed source rejection, unchanged SharedPreferences backup, empty migration, and marker/count consistency. These tests still do not establish production rollout safety or upgrade behavior on the user's installed device.
 
 ## Proposed schema (not implemented)
 
@@ -73,7 +73,7 @@ Store the complete serialized record payload to avoid a lossy field-by-field sch
 - Exact serialization/deserialization round-trip for every field.
 - Duplicate IDs are retained as separate records.
 - Record order is preserved when timestamps tie.
-- Malformed top-level JSON, non-object entries, invalid required fields, malformed nested arrays, and invalid optional numeric fields fail closed.
+- Malformed top-level JSON, non-object entries, invalid required fields, malformed nested arrays, numeric strings, non-finite values, and invalid optional numeric fields fail closed.
 - No migration marker is produced by a parse failure.
 
 ### Android SQLite instrumentation tests
@@ -82,6 +82,8 @@ Store the complete serialized record payload to avoid a lossy field-by-field sch
 - Duplicate IDs survive migration.
 - Simulated exception before commit leaves no rows and no marker; retry succeeds from the original preference backup.
 - Marker and rows are atomic.
+- Empty source migration is marked and idempotent.
+- A malformed or count-inconsistent marker is rejected rather than trusted.
 - Database reopen returns the same ordered records.
 - Database integrity check succeeds.
 - A database/schema version upgrade preserves all records.
@@ -96,4 +98,4 @@ Store the complete serialized record payload to avoid a lossy field-by-field sch
 
 ## Current decision
 
-SQLite migration is not ready to implement until strict legacy-compatible validation and Android transaction tests are in place. The next safe work is to harden/test the record codec and establish an instrumentation-test path.
+The isolated SQLite store and strict codec are under audit; they are not connected to production reads or writes. Codec and Android transaction tests now cover the cases listed above, subject to the latest CI run. Remaining gates include a schema-upgrade test, an explicit missing-key versus present-malformed source test at the future migration boundary, full inspection of every legacy optional-field shape, and a separately approved upgrade test using an export/backup from the installed app. Do not wire SQLite into production, remove the SharedPreferences backup, merge, release, or replace the installed APK as part of this audit.
