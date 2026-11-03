@@ -105,6 +105,7 @@ private fun AnalyzerApp(context: Context) {
     var spotLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
+    var signalHistoryError by remember { mutableStateOf<String?>(null) }
     var historyRefreshLoading by remember { mutableStateOf(false) }
     var historyRefreshError by remember { mutableStateOf<String?>(null) }
     var historyRefreshMessage by remember { mutableStateOf<String?>(null) }
@@ -147,6 +148,18 @@ private fun AnalyzerApp(context: Context) {
             if (p.size == 4) runCatching { SavedRun(p[0].toLong(), p[1].toDouble(), p[2], p[3]) }.getOrNull() else null
         }
     }
+    fun reloadSignalHistory() {
+        try {
+            signalHistory = SignalJournal.read(context)
+            val recovered = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                .getBoolean("signal_journal_recovered_from_backup", false)
+            signalHistoryError = if (recovered) {
+                "Riwayat dibaca dari cadangan karena jurnal utama rusak. Data utama yang rusak tetap disimpan untuk pemeriksaan."
+            } else null
+        } catch (error: Exception) {
+            signalHistoryError = error.message ?: "Riwayat tidak dapat dibaca; data tidak diubah."
+        }
+    }
     fun refresh() {
         scope.launch {
             loading = true
@@ -175,7 +188,7 @@ private fun AnalyzerApp(context: Context) {
             } finally { loading = false }
         }
     }
-    LaunchedEffect(Unit) { loadHistory(); signalHistory = SignalJournal.read(context); refresh() }
+    LaunchedEffect(Unit) { loadHistory(); reloadSignalHistory(); refresh() }
     LaunchedEffect(selected) {
         if (selected == "Pengaturan") {
             while (true) {
@@ -535,8 +548,8 @@ private fun AnalyzerApp(context: Context) {
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("USDT FUTURES OPPORTUNITIES • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Memeringkat koin USDT Futures berdasarkan likuiditas, tren 1H/15M, dan momentum 5M. Data harga/candle dari Binance Spot. Analisis saja; tidak menempatkan order.", color = Muted, fontSize = 11.sp)
+                                Text("SPOT USDT OPPORTUNITIES • TOP 15", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                Text("Memeringkat pasangan Spot USDT yang juga tersedia sebagai kontrak Futures USDT perpetual, berdasarkan likuiditas, tren 1H/15M, dan momentum 5M. Harga dan candle analisis berasal dari Binance Spot. Analisis saja; tidak menempatkan order.", color = Muted, fontSize = 11.sp)
                                 Button(onClick = {
                                     scope.launch {
                                         scanLoading = true
@@ -546,13 +559,13 @@ private fun AnalyzerApp(context: Context) {
                                         val scanner = CoinScanner(repo, context)
                                          try {
                                             scannedCoins = scanner.scan(15)
-                                            SignalJournal.recordSignals(context, scannedCoins)
+                                            // CoinScanner owns journal writes; do not repeat the same write here.
                                         }
                                         catch (e: Exception) { scanError = e.message ?: "Scanner gagal mengambil data" }
-                                        finally { scanDiagnostics = scanner.lastDiagnostics; signalHistory = SignalJournal.read(context); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
+                                        finally { scanDiagnostics = scanner.lastDiagnostics; reloadSignalHistory(); scanLoading = false; scanCompleted = true; scanCompletedAt = System.currentTimeMillis() }
                                     }
                                 }, enabled = !scanLoading, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
-                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PELUANG FUTURES")
+                                    Text(if (scanLoading) "MEMINDAI MARKET…" else "PINDAI PASANGAN SPOT")
                                 }
                                 if (scanLoading) Text("Memeriksa likuiditas dan candle kandidat. Proses pertama dapat memerlukan waktu.", color = Muted, fontSize = 11.sp)
                                 scanError?.let { Text(it, color = Red, fontSize = 12.sp) }
@@ -624,47 +637,53 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshError = null
                                     historyRefreshMessage = null
                                     try {
-                                        val dueEvaluations = SignalJournal.pendingEvaluations(context)
-                                        var evaluationFailures = 0
-                                        var evaluationUpdated = 0
-                                        var lastEvaluationError: String? = null
-                                        for (pending in dueEvaluations) {
-                                            try {
-                                                val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                if (historical != null) {
-                                                    SignalJournal.updateHistoricalEvaluation(context, pending.signalId, pending.horizonMinutes, historical.first, historical.second)
-                                                    evaluationUpdated++
-                                                } else {
+                                        val result = withContext(Dispatchers.IO) {
+                                            val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
+                                            var evaluationFailures = 0
+                                            var evaluationUpdated = 0
+                                            var lastEvaluationError: String? = null
+                                            for (pending in dueEvaluations) {
+                                                try {
+                                                    val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
+                                                    if (historical != null) {
+                                                        SignalJournal.updateHistoricalEvaluation(
+                                                            context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
+                                                        )
+                                                        evaluationUpdated++
+                                                    } else {
+                                                        evaluationFailures++
+                                                        lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                                    }
+                                                } catch (error: Exception) {
                                                     evaluationFailures++
-                                                    lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                                    lastEvaluationError = error.message ?: "Gagal mengambil candle historis"
                                                 }
-                                            } catch (e: Exception) {
-                                                evaluationFailures++
-                                                lastEvaluationError = e.message ?: "Gagal mengambil candle historis"
-                                                // Leave this horizon pending so the next refresh/auto scan can retry.
                                             }
+                                            val pendingCount = SignalJournal.pendingEvaluations(context).size
+                                            val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+                                            evalPrefs.edit()
+                                                .putInt("history_eval_pending", pendingCount)
+                                                .putInt("history_eval_last_attempted", dueEvaluations.size)
+                                                .putInt("history_eval_last_failed", evaluationFailures)
+                                                .putLong("history_eval_last_scan", System.currentTimeMillis())
+                                                .apply()
+                                            if (lastEvaluationError != null) {
+                                                evalPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
+                                            } else if (dueEvaluations.isNotEmpty()) {
+                                                evalPrefs.edit().remove("history_eval_last_error").apply()
+                                            }
+                                            val message = if (dueEvaluations.isEmpty()) {
+                                                "Belum ada evaluasi yang jatuh tempo. Evaluasi berikutnya diproses setelah waktunya tercapai."
+                                            } else {
+                                                "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • $pendingCount masih menunggu."
+                                            }
+                                            Triple(evaluationUpdated, evaluationFailures, message)
                                         }
-                                        val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
-                                        evalPrefs.edit()
-                                            .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
-                                            .putInt("history_eval_last_attempted", dueEvaluations.size)
-                                            .putInt("history_eval_last_failed", evaluationFailures)
-                                            .putLong("history_eval_last_scan", System.currentTimeMillis())
-                                            .apply()
-                                        if (lastEvaluationError != null) {
-                                            evalPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
-                                        } else if (dueEvaluations.isNotEmpty()) {
-                                            evalPrefs.edit().remove("history_eval_last_error").apply()
-                                        }
-                                        signalHistory = SignalJournal.read(context)
-                                        historyRefreshMessage = if (dueEvaluations.isEmpty()) {
-                                            "Belum ada evaluasi yang jatuh tempo untuk diproses. Evaluasi berikutnya akan berjalan setelah waktunya tercapai."
-                                        } else {
-                                            "Pemeriksaan selesai: $evaluationUpdated berhasil • $evaluationFailures gagal • ${SignalJournal.pendingEvaluations(context).size} masih menunggu."
-                                        }
+                                        reloadSignalHistory()
+                                        historyRefreshMessage = result.third
                                     } catch (e: Exception) {
                                         historyRefreshError = e.message ?: "Gagal memperbarui evaluasi riwayat"
-                                        signalHistory = SignalJournal.read(context)
+                                        reloadSignalHistory()
                                     } finally {
                                         historyRefreshLoading = false
                                     }
@@ -673,7 +692,7 @@ private fun AnalyzerApp(context: Context) {
                             enabled = !historyRefreshLoading,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(if (historyRefreshLoading) "MEMPERBARUI HARGA & EVALUASI…" else "SEGARKAN RIWAYAT")
+                            Text(if (historyRefreshLoading) "MEMPERBARUI EVALUASI HISTORIS…" else "SEGARKAN RIWAYAT")
                         }
                         historyRefreshMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
@@ -687,7 +706,8 @@ private fun AnalyzerApp(context: Context) {
                         exportMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         exportError?.let { Text("Export gagal: $it", color = Red, fontSize = 11.sp) }
                     }
-                    if (signalHistory.isEmpty()) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
+                    signalHistoryError?.let { message -> item { Text(message, color = Red, fontSize = 11.sp) } }
+                    if (signalHistory.isEmpty() && signalHistoryError == null) item { EmptyCard("Belum ada sinyal tercatat. Jalankan pemindaian scanner untuk mulai mengisi riwayat.") }
                     items(signalHistory, key = { it.id }) { run ->
                         Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp),
                             border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF203044))) {
@@ -774,7 +794,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text("Pusat notifikasi struktur", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                    Text(if (autoRefresh) "Auto scan Spot aktif • target setiap 10 menit" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
+                                    Text(if (autoRefresh) "Auto scan Spot aktif • jeda sekitar 10 menit setelah scan" else "Auto scan Spot tidak aktif", color = if (autoRefresh) Green else Amber, fontSize = 11.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -820,7 +840,7 @@ private fun AnalyzerApp(context: Context) {
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text("Pembaruan data", color = Muted, fontSize = 11.sp)
-                                    Text("Scan manual + auto scan Spot setiap 10 menit saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                    Text("Scan manual + jeda sekitar 10 menit setelah setiap scan saat layanan aktif", color = Color.White, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
@@ -898,12 +918,12 @@ private fun AnalyzerApp(context: Context) {
                         Column(Modifier.fillMaxWidth().padding(9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("CANDLE ${index + 1}", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             Text(step.label, color = if (step.direction == "NAIK") Green else if (step.direction == "TURUN") Red else Amber, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                            Text("${step.confidence}%", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Skor ${step.score}", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
                         }
                     }
                 }
             }
-            Text("Estimasi heuristik struktur + momentum, bukan model AI terlatih. Angka belum tervalidasi backtest dan bukan probabilitas akurat.", color = Muted, fontSize = 10.sp)
+            Text("Skor heuristik struktur + momentum, bukan probabilitas atau model AI terlatih. Belum tervalidasi backtest.", color = Muted, fontSize = 10.sp)
         }
     }
 }

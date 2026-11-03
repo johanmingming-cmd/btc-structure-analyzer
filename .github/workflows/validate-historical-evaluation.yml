@@ -5,7 +5,12 @@ on:
     branches:
       - fix/historical-spot-evaluation
       - feature/stage1-evaluation-10m-ui-cleanup
+      - fix/prediction-lab-audit-2026
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - feature/stage1-evaluation-10m-ui-cleanup
 
 permissions:
   contents: read

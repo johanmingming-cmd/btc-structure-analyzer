@@ -55,7 +55,7 @@ class BinanceRepository {
     }
 
 
-    /** Finds the nearest completed 1m Spot candle close around a requested evaluation target. */
+    /** Finds the nearest completed 1m Spot candle close at or immediately before the target. */
     suspend fun historicalSpotClose(symbol: String, targetTime: Long): Pair<Double, Long>? = withContext(Dispatchers.IO) {
         val minute = targetTime / 60_000L * 60_000L
         val start = (minute - 60_000L).coerceAtLeast(0L)
@@ -73,63 +73,19 @@ class BinanceRepository {
                 client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) throw IllegalStateException("Spot historical candle HTTP ${response.code}")
                     val rows = JSONArray(response.body?.string().orEmpty())
-                    val candidates = buildList {
-                        for (i in 0 until rows.length()) {
-                            val row = rows.optJSONArray(i) ?: continue
-                            if (row.length() < 7) continue
-                            val close = row.optString(4).toDoubleOrNull() ?: continue
-                            val closeTime = row.optLong(6, -1L)
-                            // Never score a horizon using a candle that closed after its target.
-                            // Use the latest completed close at/before target, only if it is recent enough.
-                            if (close > 0.0 && closeTime <= targetTime &&
-                                closeTime >= targetTime - 60_000L) add(close to closeTime)
-                        }
-                    }
-                    return@withContext candidates.maxByOrNull { it.second }
+                    val selected = selectHistoricalSpotClose(rows, targetTime)
+                    // A successful endpoint with no eligible candle is not the end of the search:
+                    // try the next public Spot host before reporting the horizon unavailable.
+                    if (selected != null) return@withContext selected
                 }
-            } catch (e: Exception) {
-                lastError = e
+            } catch (error: Exception) {
+                lastError = error
             }
         }
-        if (lastError != null) throw IllegalStateException("Gagal mengambil candle historis Spot untuk evaluasi: ${lastError.message}", lastError)
-        null
-    }
-
-    /** Fetch completed 1m Spot OHLC bars for conservative historical TP/SL evaluation. */
-    suspend fun historicalSpotBars(symbol: String, startTime: Long, endTime: Long): List<HistoricalBar> = withContext(Dispatchers.IO) {
-        val start = (startTime / 60_000L) * 60_000L
-        val end = (endTime / 60_000L) * 60_000L
-        if (end <= start) return@withContext emptyList()
-        val paths = listOf(
-            "https://data-api.binance.vision/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000",
-            "https://api.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000",
-            "https://api1.binance.com/api/v3/klines?symbol=$symbol&interval=1m&startTime=$start&endTime=$end&limit=1000"
-        )
-        var lastError: Exception? = null
-        for (url in paths) {
-            try {
-                val request = Request.Builder().url(url)
-                    .header("User-Agent", "PredictionLab-SpotHistoricalEvaluation/1.0").get().build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw IllegalStateException("Spot OHLC HTTP ${response.code}")
-                    val rows = JSONArray(response.body?.string().orEmpty())
-                    return@withContext buildList {
-                        for (i in 0 until rows.length()) {
-                            val row = rows.optJSONArray(i) ?: continue
-                            if (row.length() < 7) continue
-                            val open = row.optLong(0, -1L)
-                            val high = row.optString(2).toDoubleOrNull() ?: continue
-                            val low = row.optString(3).toDoubleOrNull() ?: continue
-                            val closeTime = row.optLong(6, -1L)
-                            if (open >= start && closeTime <= end && high > 0.0 && low > 0.0 && high >= low) {
-                                add(HistoricalBar(open, high, low, closeTime))
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) { lastError = e }
+        if (lastError != null) {
+            throw IllegalStateException("Gagal mengambil candle historis Spot untuk evaluasi: ${lastError.message}", lastError)
         }
-        throw IllegalStateException("Gagal mengambil candle historis TP/SL: ${lastError?.message ?: "jaringan tidak tersedia"}", lastError)
+        null
     }
 
     suspend fun candles(interval: String, limit: Int = 200, symbol: String = "BTCUSDT"): List<Candle> = withContext(Dispatchers.IO) {
@@ -163,4 +119,24 @@ class BinanceRepository {
         }
         throw IllegalStateException("Gagal menghubungi endpoint Binance Spot. Periksa jaringan/DNS lalu coba lagi. ${lastError?.message ?: ""}", lastError)
     }
+}
+
+/** Pure selector shared by the network path and unit tests. */
+internal fun selectHistoricalSpotClose(rows: JSONArray, targetTime: Long): Pair<Double, Long>? {
+    val candidates = buildList {
+        for (index in 0 until rows.length()) {
+            val row = rows.optJSONArray(index) ?: continue
+            if (row.length() < 7) continue
+            val openTime = row.optLong(0, -1L)
+            val close = row.optString(4).toDoubleOrNull() ?: continue
+            val closeTime = row.optLong(6, -1L)
+            // Only complete 1m candles are valid; future closes and stale candles are excluded.
+            if (openTime >= 0L && close.isFinite() && close > 0.0 &&
+                closeTime == openTime + 59_999L &&
+                closeTime <= targetTime && closeTime >= targetTime - 60_000L) {
+                add(close to closeTime)
+            }
+        }
+    }
+    return candidates.maxByOrNull { it.second }
 }

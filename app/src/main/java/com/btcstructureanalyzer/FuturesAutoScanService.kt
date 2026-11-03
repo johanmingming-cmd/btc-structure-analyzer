@@ -47,7 +47,6 @@ class FuturesAutoScanService : Service() {
                     try {
                         updateOngoing("Memindai Binance Spot • 1H / 15M / 5M")
                         val results = CoinScanner(BinanceRepository(), applicationContext).scan(15)
-                        SignalJournal.recordSignals(applicationContext, results)
                         notifyNewSignals(results)
                         val stamp = System.currentTimeMillis()
                         prefs.edit().putLong("spot_last_scan", stamp).putInt("spot_last_count", results.size).remove("spot_last_error").apply()
