@@ -96,4 +96,24 @@ class TrendSetupDetectorTest {
         assertEquals(SetupStatus.WAIT, result.status)
         assertEquals(SetupWaitReason.REGIME_NOT_TREND, result.waitReason)
     }
+    @Test fun reportsSmallFifteenMinuteBodyAsItsOwnWaitCause() {
+        val result = TrendSetupDetector.detect(
+            AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG,
+            series(35), series(20)
+        )
+        assertEquals(SetupWaitReason.NO_15M_PATTERN, result.waitReason)
+        assertEquals("FIFTEEN_MINUTE_BODY_TOO_SMALL", result.diagnosticDetail)
+    }
+
+    @Test fun distinguishesMissingFiveMinuteBreakoutTrigger() {
+        val fifteen = series(35).toMutableList()
+        fifteen[fifteen.lastIndex] = Candle(35, 101.0, 103.4, 100.8, 103.0, 1200.0, 36)
+        val result = TrendSetupDetector.detect(
+            AdaptiveRegime.TREND, AdaptiveDecision.LONG, AdaptiveDecision.LONG,
+            fifteen, series(20)
+        )
+        assertEquals(SetupWaitReason.NO_5M_TRIGGER, result.waitReason)
+        assertEquals("FIVE_MINUTE_BREAKOUT_TRIGGER_NOT_MET", result.diagnosticDetail)
+    }
+
 }
