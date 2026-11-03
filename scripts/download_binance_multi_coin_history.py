@@ -127,7 +127,7 @@ def main():
    raise RuntimeError(f"Only {len(accepted)}/{COUNT} pairs had complete, gap-free history; see SKIPPED diagnostics.")
   manifest={"schemaVersion":1,"source":"Binance Spot public klines","generatedAtUtc":datetime.now(timezone.utc).isoformat(),"startTimeMs":start,"endTimeMs":end,"requestedCoins":COUNT,"symbols":accepted,"intervals":list(INTERVALS),"minimumBars":MINIMUM}
   temp=staging/"manifest.json.tmp"
-  temp.write_text(json.dumps(manifest,indent=2)+"\\n",encoding="utf-8")
+  temp.write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
   temp.replace(staging/"manifest.json")
   if backup.exists(): shutil.rmtree(backup)
   had_previous=OUT.exists()
