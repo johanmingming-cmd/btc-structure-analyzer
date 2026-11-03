@@ -19,10 +19,12 @@ class MultiCoinMetricsAggregator {
         require(row.horizonBars > 0)
         require(row.candidateCount >= 0 && row.evaluated >= 0 && row.directionalHits >= 0)
         require(row.misses >= 0 && row.neutral >= 0 && row.waitCount >= 0)
-        require(row.evaluated == row.directionalHits + row.misses + row.neutral)
-        require(row.candidateCount == row.evaluated + row.waitCount)
+        require(row.evaluated.toLong() == row.directionalHits.toLong() + row.misses.toLong() + row.neutral.toLong())
+        require(row.candidateCount.toLong() == row.evaluated.toLong() + row.waitCount.toLong())
         val mean = row.meanSignedReturnPercent
         val maxAbs = row.maxAbsoluteReturnPercent
+        require((row.evaluated == 0) == (mean == null))
+        require((row.evaluated == 0) == (maxAbs == null))
         require(mean == null || mean.isFinite())
         require(maxAbs == null || (maxAbs.isFinite() && maxAbs >= 0.0))
         val total = totals.getOrPut(row.horizonBars) { Totals() }
