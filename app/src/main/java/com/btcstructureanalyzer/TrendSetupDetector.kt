@@ -54,7 +54,7 @@ object TrendSetupDetector {
             return wait(SetupWaitReason.INSUFFICIENT_DATA)
 
         val atr15 = atr(candles15m, config.atrPeriod) ?: return wait(SetupWaitReason.INSUFFICIENT_DATA)
-        val ema = ema(candles15m.takeLast(config.emaPeriod), config.emaPeriod)
+        val ema = ema(candles15m, config.emaPeriod)
         val last15 = candles15m.last()
         val prior15 = candles15m.dropLast(1).takeLast(config.breakoutLookback)
         val isLong = bias1h == AdaptiveDecision.LONG
@@ -112,8 +112,10 @@ object TrendSetupDetector {
     }
 
     private fun ema(candles: List<Candle>, period: Int): Double {
+        require(candles.size >= period)
+        val seed = candles.take(period).map { it.close }.average()
         val alpha = 2.0 / (period + 1.0)
-        return candles.drop(1).fold(candles.first().close) { value, candle ->
+        return candles.drop(period).fold(seed) { value, candle ->
             alpha * candle.close + (1.0 - alpha) * value
         }
     }
