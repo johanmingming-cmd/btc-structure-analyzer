@@ -39,6 +39,16 @@ class AdaptivePredictionEngineTest {
         assertEquals(closed.last().openTime, result.latestClosed1hTime)
     }
 
+    @Test fun rejectsOutOfOrderClosedCandlesInsteadOfSortingThem() {
+        val source = candles(3_600_000L).toMutableList()
+        val earlier = source[20]
+        source[20] = source[21]
+        source[21] = earlier
+        val result = AdaptivePredictionEngine.evaluate(input(h1 = source))
+        assertEquals(AdaptiveDecision.WAIT, result.decision)
+        assertEquals(AdaptiveReason.WAIT_DATA_INVALID, result.reason)
+    }
+
     @Test fun rejectsMissingCandleInterval() {
         val source = candles(3_600_000L).toMutableList()
         source.removeAt(20)
