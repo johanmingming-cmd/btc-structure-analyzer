@@ -2,6 +2,9 @@ name: Prediction Lab Signed APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - feature/stage1-evaluation-10m-ui-cleanup
   push:
     branches:
       - feature/prediction-lab-signing
