@@ -17,7 +17,7 @@ class CoinScannerScoreTest {
     }
 
     @Test fun strongerMarketActivityInputsIncreaseCandidateRanking() {
-        val low = calculateScannerScore(
+        val low = calculateCandidateRankingScore(
             quoteVolume = 20_000_000.0,
             netMove = 0.0001,
             referenceOpen = 0.1,
@@ -25,7 +25,7 @@ class CoinScannerScoreTest {
             previousAverageVolume = 100.0,
             opposingRoomPct = 0.2
         )
-        val high = calculateScannerScore(
+        val high = calculateCandidateRankingScore(
             quoteVolume = 1_000_000_000.0,
             netMove = 0.001,
             referenceOpen = 0.1,
@@ -37,7 +37,7 @@ class CoinScannerScoreTest {
     }
 
     @Test fun invalidOrMissingInputsKeepCandidateRankingBounded() {
-        val score = calculateScannerScore(
+        val score = calculateCandidateRankingScore(
             quoteVolume = Double.NaN,
             netMove = Double.NaN,
             referenceOpen = 0.0,
