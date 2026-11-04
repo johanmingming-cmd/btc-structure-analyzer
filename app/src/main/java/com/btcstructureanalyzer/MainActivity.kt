@@ -35,6 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -638,27 +642,32 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshMessage = null
                                     try {
                                         val result = withContext(Dispatchers.IO) {
-                                            val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
-                                            var evaluationFailures = 0
-                                            var evaluationUpdated = 0
-                                            var lastEvaluationError: String? = null
-                                            for (pending in dueEvaluations) {
-                                                try {
-                                                    val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                    if (historical != null) {
-                                                        SignalJournal.updateHistoricalEvaluation(
-                                                            context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
-                                                        )
-                                                        evaluationUpdated++
-                                                    } else {
-                                                        evaluationFailures++
-                                                        lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                            val dueEvaluations = SignalJournal.pendingEvaluations(context)
+                                            val permits = Semaphore(4)
+                                            val evaluationResults = coroutineScope {
+                                                dueEvaluations.map { pending ->
+                                                    async(Dispatchers.IO) {
+                                                        permits.withPermit {
+                                                            try {
+                                                                val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
+                                                                if (historical == null) {
+                                                                    pending to (false to "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m")
+                                                                } else {
+                                                                    val saved = SignalJournal.updateHistoricalEvaluation(
+                                                                        context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
+                                                                    )
+                                                                    pending to (saved to if (saved) null else "Hasil ${pending.symbol} ${pending.horizonMinutes}m tidak tersimpan; jurnal berubah atau waktu candle tidak valid")
+                                                                }
+                                                            } catch (error: Exception) {
+                                                                pending to (false to (error.message ?: "Gagal mengambil candle historis"))
+                                                            }
+                                                        }
                                                     }
-                                                } catch (error: Exception) {
-                                                    evaluationFailures++
-                                                    lastEvaluationError = error.message ?: "Gagal mengambil candle historis"
-                                                }
+                                                }.map { it.await() }
                                             }
+                                            val evaluationUpdated = evaluationResults.count { it.second.first }
+                                            val evaluationFailures = evaluationResults.count { !it.second.first }
+                                            val lastEvaluationError = evaluationResults.firstOrNull { !it.second.first }?.second?.second
                                             val pendingCount = SignalJournal.pendingEvaluations(context).size
                                             val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
                                             evalPrefs.edit()
