@@ -43,6 +43,48 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
+      - name: Run forward-test unit tests
+        if: github.event_name == 'workflow_dispatch'
+        run: gradle --no-daemon testDebugUnitTest
+
+      - name: Restore persistent signing key for forward-test release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > prediction-lab-release.p12
+          test -s prediction-lab-release.p12
+          keytool -list -keystore prediction-lab-release.p12 -storetype PKCS12 -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "Persistent signing key verified."
+
+      - name: Build signed forward-test APK
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/prediction-lab-release.p12
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Verify forward-test APK signature
+        if: github.event_name == 'workflow_dispatch'
+        run: '"$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk'
+
+      - name: Upload forward-test APK
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: prediction-lab-forward-test-v1.5.3
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
