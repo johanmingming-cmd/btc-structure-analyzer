@@ -692,7 +692,7 @@ private fun AnalyzerApp(context: Context) {
                             enabled = !historyRefreshLoading,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(if (historyRefreshLoading) "MEMPERBARUI EVALUASI HISTORIS…" else "SEGARKAN RIWAYAT")
+                            Text(if (historyRefreshLoading) "MENGUKUR HASIL SINYAL…" else "EVALUASI SINYAL YANG JATUH TEMPO")
                         }
                         historyRefreshMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
