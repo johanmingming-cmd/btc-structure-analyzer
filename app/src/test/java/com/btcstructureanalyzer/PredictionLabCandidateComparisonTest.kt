@@ -21,14 +21,20 @@ class PredictionLabCandidateComparisonTest {
         var waits: Int = 0,
         var signedReturnSum: Double = 0.0
     ) {
-        fun add(row: HorizonEvaluation) {
-            candidates += row.candidateCount
-            signals += row.evaluated
-            hits += row.directionalHits
-            misses += row.misses
-            neutral += row.neutral
-            waits += row.waitCount
-            signedReturnSum += (row.meanSignedReturnPercent ?: 0.0) * row.evaluated
+        fun addCandidate(decision: AdaptiveDecision, signedReturn: Double?) {
+            candidates++
+            if (decision == AdaptiveDecision.WAIT) {
+                waits++
+                return
+            }
+            val signed = requireNotNull(signedReturn)
+            signals++
+            signedReturnSum += signed
+            when {
+                signed > 0.0 -> hits++
+                signed < 0.0 -> misses++
+                else -> neutral++
+            }
         }
         val hitRate: Double? get() = if (signals > 0) hits * 100.0 / signals else null
         val meanSignedReturn: Double? get() = if (signals > 0) signedReturnSum / signals else null
@@ -87,9 +93,17 @@ class PredictionLabCandidateComparisonTest {
             val m15 = load(File(coin, "15m.csv"))
             val m5 = load(File(coin, "5m.csv"))
             val segment = segments(m5)[segmentIndex]
-            val result = WalkForwardEvaluator.evaluateSegment(
-                m5, listOf(12, 36, 72), segment.start, segment.end, evaluationStep = 12
-            ) { history ->
+
+            // Build one hourly decision stream. Each prediction is reused across horizons;
+            // 3h and 6h outcomes are sampled every 3rd and 6th hourly decision respectively.
+            val allHourlyEligible = m5.indices.filter { i ->
+                val decisionTime = m5[i].closeTime + 1L
+                decisionTime >= segment.start && decisionTime < segment.end &&
+                    i + 12 < m5.size && m5[i + 12].closeTime + 1L <= segment.end
+            }
+            val hourlySamples = allHourlyEligible.filterIndexed { position, _ -> position % 12 == 0 }
+            val predictions = hourlySamples.associateWith { i ->
+                val history = m5.subList(0, i + 1)
                 val decisionTime = history.last().closeTime + 1L
                 AdaptivePredictionEngine.evaluate(
                     AdaptiveEngineInput(
@@ -101,7 +115,25 @@ class PredictionLabCandidateComparisonTest {
                     profile
                 ).decision
             }
-            result.horizons.forEach { aggregate.getValue(it.horizonBars).add(it) }
+
+            for (horizon in listOf(12, 36, 72)) {
+                val horizonStep = horizon / 12
+                val eligible = hourlySamples.filterIndexed { position, i ->
+                    position % horizonStep == 0 &&
+                        i + horizon < m5.size &&
+                        m5[i + horizon].closeTime + 1L <= segment.end
+                }
+                for (i in eligible) {
+                    val decision = predictions.getValue(i)
+                    val signedReturn = if (decision == AdaptiveDecision.WAIT) {
+                        null
+                    } else {
+                        val raw = (m5[i + horizon].close / m5[i].close - 1.0) * 100.0
+                        if (decision == AdaptiveDecision.LONG) raw else -raw
+                    }
+                    aggregate.getValue(horizon).addCandidate(decision, signedReturn)
+                }
+            }
         }
         return aggregate
     }
