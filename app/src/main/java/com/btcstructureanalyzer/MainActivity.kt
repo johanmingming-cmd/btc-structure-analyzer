@@ -456,9 +456,9 @@ private fun AnalyzerApp(context: Context) {
                                             }
                                             Text(symbol, color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
                                             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
-                                                listOf(Triple("SKOR", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
+                                                listOf(Triple("RANKING", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
                                                     Card(
-                                                        modifier = Modifier.weight(if (metric.first == "SKOR") 0.8f else 1.2f),
+                                                        modifier = Modifier.weight(if (metric.first == "RANKING") 0.8f else 1.2f),
                                                         colors = CardDefaults.cardColors(containerColor = Color(0xFF092721)),
                                                         shape = RoundedCornerShape(11.dp),
                                                         border = androidx.compose.foundation.BorderStroke(1.dp, directionColor.copy(alpha = .55f))
@@ -635,14 +635,14 @@ private fun AnalyzerApp(context: Context) {
                                             }
                                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                                 Text("$" + SignalJournal.fmt(coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                                Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
+                                                Text("Ranking ${coin.score}", color = Muted, fontWeight = FontWeight.SemiBold)
                                             }
                                         }
                                         Text("SNR • S1: ${coin.supportLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  S2: ${coin.supportLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  S3: ${coin.supportLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                         Text("R1: ${coin.resistanceLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  R2: ${coin.resistanceLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  R3: ${coin.resistanceLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                     }
                                 }
-                                if (scannedCoins.isNotEmpty()) Text("Skor adalah peringkat heuristik, bukan probabilitas menang. Hasil bukan saran transaksi.", color = Muted, fontSize = 10.sp)
+                                if (scannedCoins.isNotEmpty()) Text("Ranking kandidat berdasarkan kondisi pasar; bukan keyakinan arah atau probabilitas menang.", color = Muted, fontSize = 10.sp)
                             }
                         }
                     }
@@ -745,7 +745,7 @@ private fun AnalyzerApp(context: Context) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
                                 Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
+                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Ranking ${run.score}", color = Color.White, fontSize = 12.sp)
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                 Divider(color = Color(0xFF20374B))
