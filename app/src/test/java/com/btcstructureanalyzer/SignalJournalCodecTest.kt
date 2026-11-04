@@ -26,6 +26,23 @@ class SignalJournalCodecTest {
         assertEquals(record(), SignalJournal.parseRecords(raw).single())
     }
 
+    @Test fun forwardTestOneThreeAndSixHourOutcomesRoundTrip() {
+        val original = record().copy(
+            price60m = 65_100.0, result60m = "ARAH_POSITIF",
+            evaluationTime60m = 1_700_003_600_000L,
+            price180m = 65_200.0, result180m = "ARAH_POSITIF",
+            evaluationTime180m = 1_700_010_800_000L,
+            price360m = 64_900.0, result360m = "ARAH_NEGATIF",
+            evaluationTime360m = 1_700_021_600_000L,
+            priceSource180m = "BINANCE_SPOT_1M_CANDLE_CLOSE",
+            priceSource360m = "BINANCE_SPOT_1M_CANDLE_CLOSE"
+        )
+        val restored = SignalJournal.parseRecords(
+            SignalJournal.serializeRecords(listOf(original))
+        ).single()
+        assertEquals(original, restored)
+    }
+
     @Test fun oldRecordsWithoutTpSlFieldsRemainReadable() {
         val old = """[{"id":"old-1","time":1700000000000,"symbol":"BTCUSDT","direction":"LONG","price":65000.0,"score":80,"supports":[64500.0],"resistances":[65500.0]}]"""
         val restored = SignalJournal.parseRecords(old).single()
