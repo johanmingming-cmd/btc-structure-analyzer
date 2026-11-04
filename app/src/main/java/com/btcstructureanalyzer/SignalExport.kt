@@ -46,10 +46,10 @@ object SignalExport {
     }
 
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
-        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,supports,resistances,result_10m,result_15m,result_30m,result_60m,result_180m,result_360m")
+        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,candidate_ranking_score,supports,resistances,result_10m,result_15m,result_30m,result_60m,result_180m,result_360m")
         records.forEach { r ->
             appendLine(listOf(
-                csv(r.id), csv(r.cohort), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(),
+                csv(r.id), csv(r.cohort), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(), r.score.toString(),
                 csv(r.supports.joinToString("|") { it.toString() }),
                 csv(r.resistances.joinToString("|") { it.toString() }),
                 csv(r.result10m), csv(r.result15m), csv(r.result30m), csv(r.result60m), csv(r.result180m), csv(r.result360m)
@@ -114,7 +114,9 @@ object SignalExport {
                 .put("direction", r.direction)
                 .put("signal_price", r.price)
                 .put("score", r.score)
-                 .put("supports", JSONArray(r.supports))
+                .put("candidate_ranking_score", r.score)
+                .put("score_semantics", "CANDIDATE_RANKING_ONLY_NOT_DIRECTIONAL_CONFIDENCE")
+                .put("supports", JSONArray(r.supports))
                 .put("resistances", JSONArray(r.resistances))
                 .put("evaluations", evaluations))
         }
