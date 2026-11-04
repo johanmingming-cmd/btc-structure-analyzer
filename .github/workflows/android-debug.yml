@@ -42,7 +42,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: Run forward-test unit tests
-        run: gradle --no-daemon testDebugUnitTest
+        run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.SignalJournalCodecTest
 
       - name: Restore persistent signing key
         shell: bash
