@@ -1,10 +1,6 @@
 package com.btcstructureanalyzer
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -84,45 +80,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 tickerError
             )
         }
-        // Historical direction evaluations use completed Spot 1m candles only.
-        // Failed or unavailable items remain pending and are retried on the next scan.
-        val pending = SignalJournal.pendingEvaluations(context).take(MAX_HISTORICAL_EVALUATIONS_PER_SCAN)
-        val historicalResults = coroutineScope {
-            val permits = Semaphore(HISTORICAL_LOOKUP_CONCURRENCY)
-            pending.map { item ->
-                async(Dispatchers.IO) {
-                    permits.withPermit {
-                        item to runCatching { repository.historicalSpotClose(item.symbol, item.targetTime) }
-                    }
-                }
-            }.map { it.await() }
-        }
-        var evaluationFailures = 0
-        var lastEvaluationError: String? = null
-        historicalResults.forEach { (item, result) ->
-            result.getOrNull()?.let { historical ->
-                if (historical != null) SignalJournal.updateHistoricalEvaluation(
-                    context, item.signalId, item.horizonMinutes, historical.first, historical.second
-                )
-            }
-            result.exceptionOrNull()?.let { error ->
-                evaluationFailures++
-                lastEvaluationError = "${item.symbol} ${item.horizonMinutes}m: ${error.message ?: error.javaClass.simpleName}"
-            }
-        }
-        val evaluationPrefs = context.getSharedPreferences("btc_structure", android.content.Context.MODE_PRIVATE)
-        evaluationPrefs.edit()
-            .putInt("history_eval_pending", SignalJournal.pendingEvaluations(context).size)
-            .putInt("history_eval_last_attempted", historicalResults.size)
-            .putInt("history_eval_last_failed", evaluationFailures)
-            .putLong("history_eval_last_scan", System.currentTimeMillis())
-            .apply()
-        if (lastEvaluationError != null) {
-            evaluationPrefs.edit().putString("history_eval_last_error", lastEvaluationError).apply()
-        } else if (historicalResults.isNotEmpty()) {
-            evaluationPrefs.edit().remove("history_eval_last_error").apply()
-        }
-
         var candlesChecked = 0
         var trendConfirmed = 0
         var momentumConfirmedCount = 0
