@@ -18,6 +18,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
 /**
@@ -28,6 +32,7 @@ import java.util.concurrent.TimeUnit
 class FuturesAutoScanService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var scanJob: Job? = null
+    private var evaluationJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -40,6 +45,26 @@ class FuturesAutoScanService : Service() {
         if (!prefs.getBoolean("background_monitoring", false)) {
             stopSelf()
             return START_NOT_STICKY
+        }
+        if (evaluationJob?.isActive != true) {
+            evaluationJob = serviceScope.launch {
+                while (true) {
+                    try {
+                        evaluateDueSignals()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        prefs.edit()
+                            .putLong("forward_eval_last_run", System.currentTimeMillis())
+                            .putString("forward_eval_last_error", error.message ?: "Evaluasi forward test gagal")
+                            .putInt("forward_eval_pending", runCatching {
+                                SignalJournal.pendingEvaluations(applicationContext).size
+                            }.getOrDefault(-1))
+                            .apply()
+                    }
+                    delay(EVALUATION_INTERVAL_MS)
+                }
+            }
         }
         if (scanJob?.isActive != true) {
             scanJob = serviceScope.launch {
@@ -64,6 +89,59 @@ class FuturesAutoScanService : Service() {
         return START_STICKY
     }
 
+    /**
+     * Evaluate only due PROSPECTIVE_V1 signals on a separate one-minute cadence.
+     * Legacy records are excluded by SignalJournal.pendingEvaluations.
+     */
+    private suspend fun evaluateDueSignals() {
+        val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        // Record that a cycle started, even if queue loading or a later step fails.
+        prefs.edit()
+            .putLong("forward_eval_last_run", System.currentTimeMillis())
+            .putInt("forward_eval_last_attempted", 0)
+            .putInt("forward_eval_last_updated", 0)
+            .putInt("forward_eval_last_failed", 0)
+            .apply()
+        val repo = BinanceRepository()
+        val due = SignalJournal.pendingEvaluations(applicationContext).take(MAX_EVALUATIONS_PER_CYCLE)
+        val permits = Semaphore(4)
+        val results = coroutineScope {
+            due.map { item ->
+                async(Dispatchers.IO) {
+                    permits.withPermit {
+                        try {
+                            val historical = repo.historicalSpotClose(item.symbol, item.targetTime)
+                            if (historical == null) item to (false to "Candle ${item.symbol} ${item.horizonMinutes}m belum tersedia")
+                            else {
+                                val saved = SignalJournal.updateHistoricalEvaluation(
+                                    applicationContext, item.signalId, item.horizonMinutes, historical.first, historical.second
+                                )
+                                item to (saved to if (saved) null else "Hasil ${item.symbol} ${item.horizonMinutes}m tidak tersimpan")
+                            }
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            item to (false to (error.message ?: "Gagal mengambil candle historis"))
+                        }
+                    }
+                }
+            }.map { it.await() }
+        }
+        val updated = results.count { it.second.first }
+        val failed = results.count { !it.second.first }
+        val lastError = results.firstOrNull { !it.second.first }?.second?.second
+        val remaining = SignalJournal.pendingEvaluations(applicationContext).size
+        prefs.edit()
+            .putInt("forward_eval_last_attempted", due.size)
+            .putInt("forward_eval_last_updated", updated)
+            .putInt("forward_eval_last_failed", failed)
+            .putInt("forward_eval_pending", remaining)
+            .putLong("forward_eval_last_run", System.currentTimeMillis())
+            .apply()
+        if (lastError != null) prefs.edit().putString("forward_eval_last_error", lastError).apply()
+        else prefs.edit().remove("forward_eval_last_error").apply()
+        if (due.isNotEmpty()) updateOngoing("Evaluasi forward test • ${updated} berhasil • ${failed} gagal • ${remaining} menunggu")
+    }
+
     private fun notifyNewSignals(results: List<ScannedCoin>) {
         val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
         val current = results.map { "${it.symbol}|${signalDirection(it)}" }.toSet()
@@ -76,7 +154,7 @@ class FuturesAutoScanService : Service() {
         val detectedAt = System.currentTimeMillis()
         val matched = results.filter { "${it.symbol}|${signalDirection(it)}" in newSignals }
         val details = matched.joinToString("\n") {
-            "${it.symbol}: ${signalDirection(it)} • skor ${it.score} • harga ${"%,.8f".format(java.util.Locale.US, it.price)} • volume 24J ${"%,.0f".format(java.util.Locale.US, it.quoteVolume)}"
+            "${it.symbol}: ${signalDirection(it)} • ranking ${it.score} • harga ${"%,.8f".format(java.util.Locale.US, it.price)} • volume 24J ${"%,.0f".format(java.util.Locale.US, it.quoteVolume)}"
         }
         fun fmtLevel(value: Double?): String = value?.let {
             String.format(java.util.Locale.US, "%.8f", it).trimEnd('0').trimEnd('.')
@@ -87,7 +165,7 @@ class FuturesAutoScanService : Service() {
         val savedDetails = "Terdeteksi ${java.text.SimpleDateFormat("dd MMM yyyy • HH:mm:ss", java.util.Locale("id", "ID")).format(java.util.Date(detectedAt))}\n$details\n$srDetails\n\nFilter: Futures USDT perpetual + Spot volume ≥ $20 juta + perubahan 24J maksimal ±12% + spread ≤ 0,50%. Analisis saja; bukan perintah transaksi."
         prefs.edit().putString("spot_notification_details", savedDetails).putLong("spot_notification_time", detectedAt).apply()
         val extra = (matched.size - 5).coerceAtLeast(0)
-        val body = matched.take(5).joinToString("\n") { "${it.symbol}: ${signalDirection(it)} • skor ${it.score}" } +
+        val body = matched.take(5).joinToString("\n") { "${it.symbol}: ${signalDirection(it)} • ranking ${it.score}" } +
             if (extra > 0) "\n+ $extra sinyal lainnya" else ""
         val openAnalysis = Intent(this, MainActivity::class.java).apply {
             putExtra(MainActivity.EXTRA_OPEN_TAB, "Analisis")
@@ -147,6 +225,7 @@ class FuturesAutoScanService : Service() {
 
     override fun onDestroy() {
         scanJob?.cancel()
+        evaluationJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -155,6 +234,8 @@ class FuturesAutoScanService : Service() {
 
     companion object {
         private const val SCAN_INTERVAL_MS = 10 * 60 * 1000L
+        private const val EVALUATION_INTERVAL_MS = 60 * 1000L
+        private const val MAX_EVALUATIONS_PER_CYCLE = 24
         private const val ONGOING_CHANNEL = "spot_auto_scan_status"
         private const val SIGNAL_CHANNEL = "spot_new_signals"
         private const val ONGOING_ID = 4200

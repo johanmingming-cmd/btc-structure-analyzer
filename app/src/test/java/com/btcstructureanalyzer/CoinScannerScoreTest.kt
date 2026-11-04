@@ -4,8 +4,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CoinScannerScoreTest {
-    @Test fun scoreIsBoundedAndNotPresentedAsProbability() {
-        val score = calculateScannerScore(
+    @Test fun candidateRankingIsBoundedAndNotAProbability() {
+        val score = calculateCandidateRankingScore(
             quoteVolume = 20_000_000.0,
             netMove = 0.0002,
             referenceOpen = 0.1,
@@ -16,8 +16,8 @@ class CoinScannerScoreTest {
         assertTrue(score in 50..100)
     }
 
-    @Test fun strongerLiquidityMomentumAndVolumeExpansionImproveRanking() {
-        val low = calculateScannerScore(
+    @Test fun strongerMarketActivityInputsIncreaseCandidateRanking() {
+        val low = calculateCandidateRankingScore(
             quoteVolume = 20_000_000.0,
             netMove = 0.0001,
             referenceOpen = 0.1,
@@ -25,7 +25,7 @@ class CoinScannerScoreTest {
             previousAverageVolume = 100.0,
             opposingRoomPct = 0.2
         )
-        val high = calculateScannerScore(
+        val high = calculateCandidateRankingScore(
             quoteVolume = 1_000_000_000.0,
             netMove = 0.001,
             referenceOpen = 0.1,
@@ -36,8 +36,8 @@ class CoinScannerScoreTest {
         assertTrue(high > low)
     }
 
-    @Test fun invalidOrMissingInputsDoNotProduceOutOfRangeScores() {
-        val score = calculateScannerScore(
+    @Test fun invalidOrMissingInputsKeepCandidateRankingBounded() {
+        val score = calculateCandidateRankingScore(
             quoteVolume = Double.NaN,
             netMove = Double.NaN,
             referenceOpen = 0.0,

@@ -23,18 +23,26 @@ data class SignalRecord(
     val price15m: Double? = null,
     val price30m: Double? = null,
     val price60m: Double? = null,
+    val price180m: Double? = null,
+    val price360m: Double? = null,
     val result10m: String = "PENDING",
     val result15m: String = "PENDING",
     val result30m: String = "PENDING",
     val result60m: String = "PENDING",
+    val result180m: String = "PENDING",
+    val result360m: String = "PENDING",
     val evaluationTime10m: Long? = null,
     val evaluationTime15m: Long? = null,
     val evaluationTime30m: Long? = null,
     val evaluationTime60m: Long? = null,
+    val evaluationTime180m: Long? = null,
+    val evaluationTime360m: Long? = null,
     val priceSource10m: String? = null,
     val priceSource15m: String? = null,
     val priceSource30m: String? = null,
     val priceSource60m: String? = null,
+    val priceSource180m: String? = null,
+    val priceSource360m: String? = null,
     val cohort: String = "LEGACY",
     val entryLow: Double? = null,
     val entryHigh: Double? = null,
@@ -172,18 +180,25 @@ object SignalJournal {
                     supports = levels("supports"), resistances = levels("resistances"),
                     price10m = optionalPrice("price10m"), price15m = optionalPrice("price15m"),
                     price30m = optionalPrice("price30m"), price60m = optionalPrice("price60m"),
+                    price180m = optionalPrice("price180m"), price360m = optionalPrice("price360m"),
                     result10m = optionalString("result10m", "PENDING")!!,
                     result15m = optionalString("result15m", "PENDING")!!,
                     result30m = optionalString("result30m", "PENDING")!!,
                     result60m = optionalString("result60m", "PENDING")!!,
+                    result180m = optionalString("result180m", "PENDING")!!,
+                    result360m = optionalString("result360m", "PENDING")!!,
                     evaluationTime10m = optionalTime("evaluationTime10m"),
                     evaluationTime15m = optionalTime("evaluationTime15m"),
                     evaluationTime30m = optionalTime("evaluationTime30m"),
                     evaluationTime60m = optionalTime("evaluationTime60m"),
+                    evaluationTime180m = optionalTime("evaluationTime180m"),
+                    evaluationTime360m = optionalTime("evaluationTime360m"),
                     priceSource10m = optionalString("priceSource10m"),
                     priceSource15m = optionalString("priceSource15m"),
                     priceSource30m = optionalString("priceSource30m"),
                     priceSource60m = optionalString("priceSource60m"),
+                    priceSource180m = optionalString("priceSource180m"),
+                    priceSource360m = optionalString("priceSource360m"),
                     cohort = optionalString("cohort", "LEGACY")!!,
                     entryLow = entryLow, entryHigh = entryHigh,
                     stopLoss = legacyPrice("stopLoss"), takeProfit1 = legacyPrice("takeProfit1"),
@@ -210,16 +225,23 @@ object SignalJournal {
                 .put("price15m", record.price15m ?: JSONObject.NULL)
                 .put("price30m", record.price30m ?: JSONObject.NULL)
                 .put("price60m", record.price60m ?: JSONObject.NULL)
+                .put("price180m", record.price180m ?: JSONObject.NULL)
+                .put("price360m", record.price360m ?: JSONObject.NULL)
                 .put("result10m", record.result10m).put("result15m", record.result15m)
                 .put("result30m", record.result30m).put("result60m", record.result60m)
+                .put("result180m", record.result180m).put("result360m", record.result360m)
                 .put("evaluationTime10m", record.evaluationTime10m ?: JSONObject.NULL)
                 .put("evaluationTime15m", record.evaluationTime15m ?: JSONObject.NULL)
                 .put("evaluationTime30m", record.evaluationTime30m ?: JSONObject.NULL)
                 .put("evaluationTime60m", record.evaluationTime60m ?: JSONObject.NULL)
+                .put("evaluationTime180m", record.evaluationTime180m ?: JSONObject.NULL)
+                .put("evaluationTime360m", record.evaluationTime360m ?: JSONObject.NULL)
                 .put("priceSource10m", record.priceSource10m ?: JSONObject.NULL)
                 .put("priceSource15m", record.priceSource15m ?: JSONObject.NULL)
                 .put("priceSource30m", record.priceSource30m ?: JSONObject.NULL)
                 .put("priceSource60m", record.priceSource60m ?: JSONObject.NULL)
+                .put("priceSource180m", record.priceSource180m ?: JSONObject.NULL)
+                .put("priceSource360m", record.priceSource360m ?: JSONObject.NULL)
                 .put("cohort", record.cohort)
             // Keep legacy fields only when they existed in the old record. New signals omit them.
             record.entryLow?.let { row.put("entryLow", it) }
@@ -283,29 +305,40 @@ object SignalJournal {
         if (additions.isNotEmpty()) writeLocked(context, additions + records)
     }
 
-    /** Returns due horizons that still need a historical Spot candle evaluation. */
-    fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> = synchronized(lock) {
-        read(context).flatMap { record ->
-            listOf(10, 15, 30, 60).mapNotNull { horizon ->
-                val target = record.time + horizon * 60_000L
-                val price = when (horizon) {
-                    10 -> record.price10m
-                    15 -> record.price15m
-                    30 -> record.price30m
-                    else -> record.price60m
-                }
-                val evaluatedAt = when (horizon) {
-                    10 -> record.evaluationTime10m
-                    15 -> record.evaluationTime15m
-                    30 -> record.evaluationTime30m
-                    else -> record.evaluationTime60m
-                }
-                val needsRecheck = price == null || evaluatedAt == null ||
-                    evaluatedAt > target || target - evaluatedAt > 60_000L
-                if (needsRecheck && now >= target) PendingEvaluation(record.id, record.symbol, horizon, target) else null
+    /** Only prospective forward-test signals are eligible; legacy history is display-only. */
+    fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> =
+        pendingEvaluations(read(context), now)
+
+    /** Pure queue builder exposed for deterministic unit tests. */
+    fun pendingEvaluations(records: List<SignalRecord>, now: Long): List<PendingEvaluation> =
+        records.asSequence()
+            .filter { it.cohort == "PROSPECTIVE_V1" }
+            .flatMap { record ->
+                listOf(10, 15, 30, 60, 180, 360).mapNotNull { horizon ->
+                    val target = record.time + horizon * 60_000L
+                    val price = when (horizon) {
+                        10 -> record.price10m
+                        15 -> record.price15m
+                        30 -> record.price30m
+                        60 -> record.price60m
+                        180 -> record.price180m
+                        else -> record.price360m
+                    }
+                    val evaluatedAt = when (horizon) {
+                        10 -> record.evaluationTime10m
+                        15 -> record.evaluationTime15m
+                        30 -> record.evaluationTime30m
+                        60 -> record.evaluationTime60m
+                        180 -> record.evaluationTime180m
+                        else -> record.evaluationTime360m
+                    }
+                    val needsEvaluation = price == null || evaluatedAt == null ||
+                        evaluatedAt > target || target - evaluatedAt > 60_000L
+                    if (needsEvaluation && now >= target) PendingEvaluation(record.id, record.symbol, horizon, target) else null
+                }.asSequence()
             }
-        }.sortedBy { it.targetTime }
-    }
+            .sortedBy { it.targetTime }
+            .toList()
 
     /** Stores only a completed historical Spot candle close at or immediately before its target. */
     fun updateHistoricalEvaluation(
@@ -315,9 +348,29 @@ object SignalJournal {
         price: Double,
         candleCloseTime: Long,
         source: String = "BINANCE_SPOT_1M_CANDLE_CLOSE"
-    ) = synchronized(lock) {
-        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60)) return@synchronized
+    ): Boolean = synchronized(lock) {
+        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60, 180, 360)) return@synchronized false
         val records = read(context)
+        val existing = records.firstOrNull { it.id == signalId } ?: return@synchronized false
+        val existingPrice = when (horizonMinutes) {
+            10 -> existing.price10m
+            15 -> existing.price15m
+            30 -> existing.price30m
+            60 -> existing.price60m
+            180 -> existing.price180m
+            else -> existing.price360m
+        }
+        val existingTime = when (horizonMinutes) {
+            10 -> existing.evaluationTime10m
+            15 -> existing.evaluationTime15m
+            30 -> existing.evaluationTime30m
+            60 -> existing.evaluationTime60m
+            180 -> existing.evaluationTime180m
+            else -> existing.evaluationTime360m
+        }
+        if (existingPrice != null && existingTime != null &&
+            existingTime <= existing.time + horizonMinutes * 60_000L &&
+            existing.time + horizonMinutes * 60_000L - existingTime <= 60_000L) return@synchronized true
         val updated = records.map { record ->
             if (record.id != signalId) return@map record
             val target = record.time + horizonMinutes * 60_000L
@@ -326,13 +379,17 @@ object SignalJournal {
                 10 -> record.evaluationTime10m
                 15 -> record.evaluationTime15m
                 30 -> record.evaluationTime30m
-                else -> record.evaluationTime60m
+                60 -> record.evaluationTime60m
+                180 -> record.evaluationTime180m
+                else -> record.evaluationTime360m
             }
             val oldPrice = when (horizonMinutes) {
                 10 -> record.price10m
                 15 -> record.price15m
                 30 -> record.price30m
-                else -> record.price60m
+                60 -> record.price60m
+                180 -> record.price180m
+                else -> record.price360m
             }
             if (oldPrice != null && oldTime != null && oldTime <= target && target - oldTime <= 60_000L) return@map record
             val favorablePct = (if (record.direction == "LONG") price - record.price else record.price - price) / record.price * 100.0
@@ -345,10 +402,14 @@ object SignalJournal {
                 10 -> record.copy(price10m = price, result10m = result, evaluationTime10m = candleCloseTime, priceSource10m = source)
                 15 -> record.copy(price15m = price, result15m = result, evaluationTime15m = candleCloseTime, priceSource15m = source)
                 30 -> record.copy(price30m = price, result30m = result, evaluationTime30m = candleCloseTime, priceSource30m = source)
-                else -> record.copy(price60m = price, result60m = result, evaluationTime60m = candleCloseTime, priceSource60m = source)
+                60 -> record.copy(price60m = price, result60m = result, evaluationTime60m = candleCloseTime, priceSource60m = source)
+                180 -> record.copy(price180m = price, result180m = result, evaluationTime180m = candleCloseTime, priceSource180m = source)
+                else -> record.copy(price360m = price, result360m = result, evaluationTime360m = candleCloseTime, priceSource360m = source)
             }
         }
-        if (updated != records) writeLocked(context, updated)
+        if (updated == records) return@synchronized false
+        writeLocked(context, updated)
+        true
     }
 
     fun fmt(price: Double): String = when {

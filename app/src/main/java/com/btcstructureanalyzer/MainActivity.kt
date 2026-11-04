@@ -35,6 +35,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -103,6 +107,12 @@ private fun AnalyzerApp(context: Context) {
     var spotLastScan by remember { mutableLongStateOf(0L) }
     var spotLastCount by remember { mutableIntStateOf(-1) }
     var spotLastError by remember { mutableStateOf<String?>(null) }
+    var evalLastRun by remember { mutableLongStateOf(0L) }
+    var evalLastAttempted by remember { mutableIntStateOf(0) }
+    var evalLastUpdated by remember { mutableIntStateOf(0) }
+    var evalLastFailed by remember { mutableIntStateOf(0) }
+    var evalPending by remember { mutableIntStateOf(0) }
+    var evalLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var signalHistoryError by remember { mutableStateOf<String?>(null) }
@@ -196,7 +206,23 @@ private fun AnalyzerApp(context: Context) {
                 spotLastScan = scanPrefs.getLong("spot_last_scan", 0L)
                 spotLastCount = scanPrefs.getInt("spot_last_count", -1)
                 spotLastError = scanPrefs.getString("spot_last_error", null)
+                evalLastRun = scanPrefs.getLong("forward_eval_last_run", 0L)
+                evalLastAttempted = scanPrefs.getInt("forward_eval_last_attempted", 0)
+                evalLastUpdated = scanPrefs.getInt("forward_eval_last_updated", 0)
+                evalLastFailed = scanPrefs.getInt("forward_eval_last_failed", 0)
+                evalPending = scanPrefs.getInt("forward_eval_pending", SignalJournal.pendingEvaluations(context).size)
+                evalLastError = scanPrefs.getString("forward_eval_last_error", null)
                 delay(2000)
+            }
+        }
+    }
+    // The service writes the journal independently. Refresh the visible list while
+    // the History tab is open so persisted automatic results appear without a manual tap.
+    LaunchedEffect(selected) {
+        if (selected == "Riwayat") {
+            while (true) {
+                reloadSignalHistory()
+                delay(3000)
             }
         }
     }
@@ -430,9 +456,9 @@ private fun AnalyzerApp(context: Context) {
                                             }
                                             Text(symbol, color = Color.White, fontWeight = FontWeight.Black, fontSize = 25.sp)
                                             Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
-                                                listOf(Triple("SKOR", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
+                                                listOf(Triple("RANKING", score, true), Triple("HARGA", signalPrice, false), Triple("VOLUME 24J", volume, false)).forEach { metric ->
                                                     Card(
-                                                        modifier = Modifier.weight(if (metric.first == "SKOR") 0.8f else 1.2f),
+                                                        modifier = Modifier.weight(if (metric.first == "RANKING") 0.8f else 1.2f),
                                                         colors = CardDefaults.cardColors(containerColor = Color(0xFF092721)),
                                                         shape = RoundedCornerShape(11.dp),
                                                         border = androidx.compose.foundation.BorderStroke(1.dp, directionColor.copy(alpha = .55f))
@@ -609,14 +635,14 @@ private fun AnalyzerApp(context: Context) {
                                             }
                                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                                 Text("$" + SignalJournal.fmt(coin.price), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                                Text("Skor ${coin.score}", color = if (coin.score >= 65) Green else Amber, fontWeight = FontWeight.ExtraBold)
+                                                Text("Ranking ${coin.score}", color = Muted, fontWeight = FontWeight.SemiBold)
                                             }
                                         }
                                         Text("SNR • S1: ${coin.supportLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  S2: ${coin.supportLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  S3: ${coin.supportLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                         Text("R1: ${coin.resistanceLevels.getOrNull(0)?.let { SignalJournal.fmt(it) } ?: "—"}  R2: ${coin.resistanceLevels.getOrNull(1)?.let { SignalJournal.fmt(it) } ?: "—"}  R3: ${coin.resistanceLevels.getOrNull(2)?.let { SignalJournal.fmt(it) } ?: "—"}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                     }
                                 }
-                                if (scannedCoins.isNotEmpty()) Text("Skor adalah peringkat heuristik, bukan probabilitas menang. Hasil bukan saran transaksi.", color = Muted, fontSize = 10.sp)
+                                if (scannedCoins.isNotEmpty()) Text("Ranking kandidat berdasarkan kondisi pasar; bukan keyakinan arah atau probabilitas menang.", color = Muted, fontSize = 10.sp)
                             }
                         }
                     }
@@ -628,8 +654,8 @@ private fun AnalyzerApp(context: Context) {
                 }
                 "Riwayat" -> {
                     item {
-                        Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
+                        Text("FORWARD TEST • RIWAYAT SINYAL", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Sinyal baru dicatat saat scanner berjalan • evaluasi harga aktual Binance Spot", color = Muted, fontSize = 12.sp)
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -638,27 +664,32 @@ private fun AnalyzerApp(context: Context) {
                                     historyRefreshMessage = null
                                     try {
                                         val result = withContext(Dispatchers.IO) {
-                                            val dueEvaluations = SignalJournal.pendingEvaluations(context).take(24)
-                                            var evaluationFailures = 0
-                                            var evaluationUpdated = 0
-                                            var lastEvaluationError: String? = null
-                                            for (pending in dueEvaluations) {
-                                                try {
-                                                    val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
-                                                    if (historical != null) {
-                                                        SignalJournal.updateHistoricalEvaluation(
-                                                            context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
-                                                        )
-                                                        evaluationUpdated++
-                                                    } else {
-                                                        evaluationFailures++
-                                                        lastEvaluationError = "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m"
+                                            val dueEvaluations = SignalJournal.pendingEvaluations(context)
+                                            val permits = Semaphore(4)
+                                            val evaluationResults = coroutineScope {
+                                                dueEvaluations.map { pending ->
+                                                    async(Dispatchers.IO) {
+                                                        permits.withPermit {
+                                                            try {
+                                                                val historical = repo.historicalSpotClose(pending.symbol, pending.targetTime)
+                                                                if (historical == null) {
+                                                                    pending to (false to "Candle historis ${pending.symbol} belum tersedia pada target ${pending.horizonMinutes}m")
+                                                                } else {
+                                                                    val saved = SignalJournal.updateHistoricalEvaluation(
+                                                                        context, pending.signalId, pending.horizonMinutes, historical.first, historical.second
+                                                                    )
+                                                                    pending to (saved to if (saved) null else "Hasil ${pending.symbol} ${pending.horizonMinutes}m tidak tersimpan; jurnal berubah atau waktu candle tidak valid")
+                                                                }
+                                                            } catch (error: Exception) {
+                                                                pending to (false to (error.message ?: "Gagal mengambil candle historis"))
+                                                            }
+                                                        }
                                                     }
-                                                } catch (error: Exception) {
-                                                    evaluationFailures++
-                                                    lastEvaluationError = error.message ?: "Gagal mengambil candle historis"
-                                                }
+                                                }.map { it.await() }
                                             }
+                                            val evaluationUpdated = evaluationResults.count { it.second.first }
+                                            val evaluationFailures = evaluationResults.count { !it.second.first }
+                                            val lastEvaluationError = evaluationResults.firstOrNull { !it.second.first }?.second?.second
                                             val pendingCount = SignalJournal.pendingEvaluations(context).size
                                             val evalPrefs = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
                                             evalPrefs.edit()
@@ -692,7 +723,7 @@ private fun AnalyzerApp(context: Context) {
                             enabled = !historyRefreshLoading,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(if (historyRefreshLoading) "MEMPERBARUI EVALUASI HISTORIS…" else "SEGARKAN RIWAYAT")
+                            Text(if (historyRefreshLoading) "MENGUKUR HASIL SINYAL…" else "EVALUASI SINYAL YANG JATUH TEMPO")
                         }
                         historyRefreshMessage?.let { Text(it, color = Green, fontSize = 11.sp) }
                         historyRefreshError?.let { Text("Riwayat belum berhasil diperbarui: $it", color = Red, fontSize = 11.sp) }
@@ -714,7 +745,7 @@ private fun AnalyzerApp(context: Context) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id","ID")).format(Date(run.time)), color = Muted, fontSize = 11.sp)
                                 Text("${run.symbol}  •  ${run.direction}", color = if (run.direction == "LONG") Green else Red, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Skor ${run.score}", color = Color.White, fontSize = 12.sp)
+                                Text("Harga sinyal: ${SignalJournal.fmt(run.price)}  •  Ranking ${run.score}", color = Color.White, fontSize = 12.sp)
                                 Text("S1–S3: ${run.supports.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFF80C8FF), fontSize = 10.sp)
                                 Text("R1–R3: ${run.resistances.joinToString(" / ") { SignalJournal.fmt(it) }.ifBlank { "—" }}", color = Color(0xFFFFC77A), fontSize = 10.sp)
                                 Divider(color = Color(0xFF20374B))
@@ -722,10 +753,12 @@ private fun AnalyzerApp(context: Context) {
                                 Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime15m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime30m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime60m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("3 jam • arah harga: ${run.result180m} ${run.price180m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime180m?.let { " • " + SimpleDateFormat("dd/MM HH:mm", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result180m == "ARAH_POSITIF") Green else if (run.result180m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("6 jam • arah harga: ${run.result360m} ${run.price360m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime360m?.let { " • " + SimpleDateFormat("dd/MM HH:mm", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result360m == "ARAH_POSITIF") Green else if (run.result360m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { Text("Evaluasi 10/15/30/60 menit menunjukkan arah harga, bukan hasil TP/SL atau bukti profit. Tidak termasuk biaya dan slippage.", color = Muted, fontSize = 10.sp) }
+                    item { Text("Forward test mencatat hasil arah harga pada 10/15/30 menit serta 1/3/6 jam setelah sinyal. Ini bukan hasil TP/SL atau bukti profit; biaya dan slippage tidak dihitung.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
@@ -882,6 +915,24 @@ private fun AnalyzerApp(context: Context) {
                                         color = if (spotLastError.isNullOrBlank()) Muted else Red, fontSize = 12.sp
                                     )
                                     Text("Status dibaca dari penyimpanan lokal dan diperbarui saat halaman ini terbuka.", color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel2), shape = RoundedCornerShape(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("DIAGNOSTIK EVALUASI OTOMATIS", color = Blue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(
+                                        if (evalLastRun > 0L) "Evaluasi terakhir: " + SimpleDateFormat("dd MMM HH:mm:ss", Locale("id", "ID")).format(Date(evalLastRun))
+                                        else "Evaluasi terakhir: belum tercatat",
+                                        color = Color.White, fontSize = 12.sp
+                                    )
+                                    Text("Percobaan: $evalLastAttempted • tersimpan: $evalLastUpdated • gagal: $evalLastFailed", color = Color.White, fontSize = 12.sp)
+                                    Text("Antrean jatuh tempo: $evalPending", color = Color.White, fontSize = 12.sp)
+                                    Text(
+                                        if (evalLastError.isNullOrBlank()) "Error evaluasi terakhir: tidak ada yang tersimpan"
+                                        else "Error evaluasi terakhir: $evalLastError",
+                                        color = if (evalLastError.isNullOrBlank()) Muted else Red, fontSize = 11.sp
+                                    )
+                                    Text("Evaluasi otomatis berjalan terpisah dari scan market, dengan interval sekitar 60 detik saat layanan aktif.", color = Muted, fontSize = 10.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))

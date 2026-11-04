@@ -6,6 +6,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - feature/stage1-evaluation-10m-ui-cleanup
+      - implementation/prediction-lab-stage-b3-core
   push:
     branches:
       - feature/prediction-lab-signing
@@ -13,6 +14,7 @@ on:
       - diagnostics/spot-scan-status
       - feature/stage1-evaluation-10m-ui-cleanup
       - fix/prediction-lab-audit-2026
+      - fix/forward-evaluation-backlog
 
 permissions:
   contents: read
@@ -40,6 +42,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
+
+      - name: Run forward-test unit tests
+        run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.CoinScannerScoreTest --tests com.btcstructureanalyzer.SignalExportTest --tests com.btcstructureanalyzer.SignalJournalCodecTest
 
       - name: Restore persistent signing key
         shell: bash
