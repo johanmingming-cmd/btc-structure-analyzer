@@ -306,10 +306,6 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         )
     }
 
-    private companion object {
-        const val MAX_HISTORICAL_EVALUATIONS_PER_SCAN = 24
-        const val HISTORICAL_LOOKUP_CONCURRENCY = 4
-    }
 }
 
 
