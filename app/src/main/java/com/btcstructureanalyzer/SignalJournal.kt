@@ -351,6 +351,26 @@ object SignalJournal {
     ): Boolean = synchronized(lock) {
         if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60, 180, 360)) return@synchronized false
         val records = read(context)
+        val existing = records.firstOrNull { it.id == signalId } ?: return@synchronized false
+        val existingPrice = when (horizonMinutes) {
+            10 -> existing.price10m
+            15 -> existing.price15m
+            30 -> existing.price30m
+            60 -> existing.price60m
+            180 -> existing.price180m
+            else -> existing.price360m
+        }
+        val existingTime = when (horizonMinutes) {
+            10 -> existing.evaluationTime10m
+            15 -> existing.evaluationTime15m
+            30 -> existing.evaluationTime30m
+            60 -> existing.evaluationTime60m
+            180 -> existing.evaluationTime180m
+            else -> existing.evaluationTime360m
+        }
+        if (existingPrice != null && existingTime != null &&
+            existingTime <= existing.time + horizonMinutes * 60_000L &&
+            existing.time + horizonMinutes * 60_000L - existingTime <= 60_000L) return@synchronized true
         val updated = records.map { record ->
             if (record.id != signalId) return@map record
             val target = record.time + horizonMinutes * 60_000L
