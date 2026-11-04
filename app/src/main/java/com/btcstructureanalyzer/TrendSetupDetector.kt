@@ -14,7 +14,11 @@ data class SetupDetectionConfig(
     val breakoutLookback: Int = 10,
     val pullbackMaxDistanceAtr: Double = 0.65,
     val minimumBodyAtr: Double = 0.20,
-    val minimumVolumeRatio: Double = 0.80
+    val minimumVolumeRatio: Double = 0.80,
+    // Zero keeps the production-equivalent baseline behavior; positive values
+    // require measurable counter-trend movement before a setup is called pullback.
+    val minimumPullbackDepthAtr: Double = 0.0,
+    val pullbackLookbackBars: Int = 3
 )
 
 data class SetupDetectionResult(
@@ -23,7 +27,8 @@ data class SetupDetectionResult(
     val direction: AdaptiveDecision,
     val waitReason: SetupWaitReason?,
     val qualityScore: Int,
-    val explanation: String
+    val explanation: String,
+    val diagnosticDetail: String? = null
 )
 
 /**
@@ -45,7 +50,9 @@ object TrendSetupDetector {
         if (config.atrPeriod < 2 || config.emaPeriod < 2 || config.breakoutLookback < 3 ||
             !config.pullbackMaxDistanceAtr.isFinite() || config.pullbackMaxDistanceAtr <= 0.0 ||
             !config.minimumBodyAtr.isFinite() || config.minimumBodyAtr < 0.0 ||
-            !config.minimumVolumeRatio.isFinite() || config.minimumVolumeRatio < 0.0) {
+            !config.minimumVolumeRatio.isFinite() || config.minimumVolumeRatio < 0.0 ||
+            !config.minimumPullbackDepthAtr.isFinite() || config.minimumPullbackDepthAtr < 0.0 ||
+            config.pullbackLookbackBars < 2) {
             return wait(SetupWaitReason.INSUFFICIENT_DATA)
         }
         if (candles15m.size < max(config.emaPeriod, config.atrPeriod + config.breakoutLookback + 1) ||
@@ -62,12 +69,29 @@ object TrendSetupDetector {
         val directionalBody = if (isLong) last15.close > last15.open else last15.close < last15.open
         val body15 = abs(last15.close - last15.open)
         val nearEma = abs(last15.close - ema) <= atr15 * config.pullbackMaxDistanceAtr
-        val pullbackShape = nearEma && directionalBody && body15 >= atr15 * config.minimumBodyAtr
+        val pullbackHistory = candles15m.dropLast(1).takeLast(config.pullbackLookbackBars)
+        val counterTrendMove = pullbackHistory.zipWithNext().sumOf { (a, b) ->
+            if (isLong) max(a.close - b.close, 0.0) else max(b.close - a.close, 0.0)
+        }
+        val pullbackRetracementConfirmed = config.minimumPullbackDepthAtr == 0.0 ||
+            counterTrendMove >= atr15 * config.minimumPullbackDepthAtr
+        val pullbackShape = nearEma && directionalBody &&
+            body15 >= atr15 * config.minimumBodyAtr && pullbackRetracementConfirmed
 
         val family = when {
             breakout && directionalBody && body15 >= atr15 * config.minimumBodyAtr -> SetupFamily.TREND_CONTINUATION
             pullbackShape -> SetupFamily.TREND_PULLBACK
-            else -> return wait(SetupWaitReason.NO_15M_PATTERN)
+            else -> {
+                val detail = when {
+                    body15 < atr15 * config.minimumBodyAtr -> "FIFTEEN_MINUTE_BODY_TOO_SMALL"
+                    !directionalBody -> "FIFTEEN_MINUTE_BODY_WRONG_DIRECTION"
+                    nearEma && config.minimumPullbackDepthAtr > 0.0 && !pullbackRetracementConfirmed ->
+                        "PULLBACK_RETRACEMENT_TOO_SHALLOW"
+                    !breakout && !nearEma -> "NO_BREAKOUT_OR_EMA_PULLBACK"
+                    else -> "FIFTEEN_MINUTE_PATTERN_NOT_QUALIFIED"
+                }
+                return wait(SetupWaitReason.NO_15M_PATTERN, detail)
+            }
         }
 
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(SetupWaitReason.INSUFFICIENT_DATA)
@@ -77,8 +101,10 @@ object TrendSetupDetector {
         val triggerBody = abs(last5.close - last5.open) >= atr5 * config.minimumBodyAtr
         val avgVolume = previous5.map { it.volume }.average()
         val volumeRatio = if (avgVolume > 0.0) last5.volume / avgVolume else 0.0
-        if (!trigger || !triggerBody || volumeRatio < config.minimumVolumeRatio)
-            return wait(SetupWaitReason.NO_5M_TRIGGER)
+        if (!trigger) return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_BREAKOUT_TRIGGER_NOT_MET")
+        if (!triggerBody) return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_TRIGGER_BODY_TOO_SMALL")
+        if (volumeRatio < config.minimumVolumeRatio)
+            return wait(SetupWaitReason.NO_5M_TRIGGER, "FIVE_MINUTE_VOLUME_RATIO_TOO_LOW")
 
         val bodyStrength = (abs(last15.close - last15.open) / atr15).coerceIn(0.0, 1.0)
         val volumeStrength = (volumeRatio / 2.0).coerceIn(0.0, 1.0)
@@ -91,9 +117,9 @@ object TrendSetupDetector {
         )
     }
 
-    private fun wait(reason: SetupWaitReason) = SetupDetectionResult(
+    private fun wait(reason: SetupWaitReason, detail: String = reason.name) = SetupDetectionResult(
         SetupFamily.NONE, SetupStatus.WAIT, AdaptiveDecision.WAIT, reason, 0,
-        "Belum ada setup terkonfirmasi: ${reason.name}."
+        "Belum ada setup terkonfirmasi: ${reason.name} / $detail.", detail
     )
 
     private fun validClosedCandles(candles: List<Candle>): Boolean =

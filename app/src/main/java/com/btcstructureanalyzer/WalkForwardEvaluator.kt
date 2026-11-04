@@ -38,4 +38,68 @@ object WalkForwardEvaluator {
   }
   return WalkForwardEvaluation(split,split,decisionEndExclusive,rows,listOf("Prediktor hanya menerima data sampai candle keputusan; candle masa depan hanya dipakai untuk scoring.","Split kronologis; tidak ada pengacakan data.","trainFraction hanya menentukan awal periode evaluasi; tidak ada pelatihan model machine learning.","testEndExclusive adalah batas akhir indeks keputusan; setiap horizon memiliki jumlah kandidat eligible sendiri.","Setiap keputusan dihitung sekali lalu dinilai pada seluruh horizon yang relevan.","Evaluation step=$evaluationStep candle; jarak sampling mengurangi beban komputasi, bukan mengubah horizon outcome.","Coverage adalah proporsi keputusan LONG/SHORT dari seluruh kandidat; WAIT dihitung terpisah.","Return diukur pada close horizon; tidak mensimulasikan biaya, slippage, atau eksekusi.","Hit rate bukan probabilitas kemenangan dan tidak membuktikan performa live."))
  }
+
+ /**
+  * Evaluates only decisions and complete forward outcomes inside one chronological segment.
+  * All candles before a decision remain available as warm-up history; no candle at or after
+  * the decision time is passed to the predictor.
+  */
+ fun evaluateSegment(
+  candles:List<Candle>,
+  horizons:List<Int>,
+  decisionStartTimeInclusive:Long,
+  decisionEndTimeExclusive:Long,
+  evaluationStep:Int=1,
+  predictor:(List<Candle>)->AdaptiveDecision
+ ):WalkForwardEvaluation {
+  require(candles.size>=20)
+  require(horizons.isNotEmpty()&&horizons.all{it>0}&&horizons.distinct().size==horizons.size)
+  require(evaluationStep>=1)
+  require(decisionStartTimeInclusive>0L&&decisionEndTimeExclusive>decisionStartTimeInclusive)
+  val interval=candles[1].openTime-candles[0].openTime
+  require(interval>0L) { "Candle interval must be positive" }
+  require(candles.all{c->c.openTime>=0L&&c.closeTime-c.openTime==interval-1L&&c.open.isFinite()&&c.high.isFinite()&&c.low.isFinite()&&c.close.isFinite()&&c.volume.isFinite()&&c.close>0.0&&c.open>0.0&&c.high>=maxOf(c.open,c.close)&&c.low<=minOf(c.open,c.close)&&c.low>0.0&&c.volume>=0.0})
+  require(candles.zipWithNext().all{(a,b)->b.openTime-a.openTime==interval&&b.closeTime>a.closeTime}) {
+   "Candle series must be strictly ordered and gap-free"
+  }
+  val decisionIndices=candles.indices.filter{i->
+   val decisionTime=candles[i].closeTime+1L
+   decisionTime>=decisionStartTimeInclusive&&decisionTime<decisionEndTimeExclusive&&
+    horizons.any{h->i+h<candles.size&&candles[i+h].closeTime+1L<=decisionEndTimeExclusive}
+  }.filterIndexed{position,_->position%evaluationStep==0}
+  require(horizons.all{h->decisionIndices.any{i->i+h<candles.size&&candles[i+h].closeTime+1L<=decisionEndTimeExclusive}}) {
+   "Each horizon must have at least one eligible decision fully contained in this segment"
+  }
+  val predictions=decisionIndices.associateWith{i->predictor(candles.subList(0,i+1).toList())}
+  val rows=horizons.map{h->
+   val eligible=decisionIndices.filter{i->i+h<candles.size&&candles[i+h].closeTime+1L<=decisionEndTimeExclusive}
+   var evaluated=0;var hits=0;var misses=0;var neutral=0;var waits=0
+   val signedReturns=mutableListOf<Double>();val absReturns=mutableListOf<Double>()
+   for(i in eligible){
+    val decision=predictions.getValue(i)
+    if(decision==AdaptiveDecision.WAIT){waits++;continue}
+    val raw=(candles[i+h].close/candles[i].close-1.0)*100.0
+    require(raw.isFinite()) { "Non-finite forward return at candle index $i, horizon $h" }
+    val signed=if(decision==AdaptiveDecision.LONG)raw else -raw
+    evaluated++;signedReturns.add(signed);absReturns.add(abs(raw))
+    when{signed>0.0->hits++;signed<0.0->misses++;else->neutral++}
+   }
+   HorizonEvaluation(h,eligible.size,evaluated,hits,misses,neutral,waits,
+    if(eligible.isNotEmpty())evaluated.toDouble()/eligible.size*100.0 else null,
+    if(evaluated>0)hits.toDouble()/evaluated*100.0 else null,
+    signedReturns.takeIf{it.isNotEmpty()}?.average(),absReturns.maxOrNull())
+  }
+  val first=decisionIndices.minOrNull()?:0
+  val end=decisionIndices.maxOrNull()?.plus(1)?:first
+  return WalkForwardEvaluation(first,first,end,rows,listOf(
+   "Chronological segment: decisions are restricted to [$decisionStartTimeInclusive, $decisionEndTimeExclusive).",
+   "All earlier candles are available as warm-up; predictor receives data only through each decision candle.",
+   "A forward outcome is scored only when its closing timestamp is at or before the segment end.",
+   "No model training is performed; this is a chronological evaluation window.",
+   "Evaluation step=$evaluationStep candle; each decision is predicted once and reused across eligible horizons.",
+   "Coverage counts LONG/SHORT decisions against eligible candidates; WAIT is counted separately.",
+   "Returns are close-to-close and exclude fees, slippage, execution and path risk; hit rate is not a win probability."
+  ))
+ }
+
 }

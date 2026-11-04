@@ -54,13 +54,28 @@ class KlineValidationTests(unittest.TestCase):
 
 class UniverseFilteringTests(unittest.TestCase):
     @patch.object(DOWNLOADER, "get_json")
-    def test_excludes_usd1_and_u_stablecoin_pairs(self, get_json):
+    def test_excludes_known_stablecoin_base_assets(self, get_json):
         get_json.return_value = [
             {"symbol": "BTCUSDT", "quoteVolume": "1000"},
             {"symbol": "USD1USDT", "quoteVolume": "900"},
             {"symbol": "UUSDT", "quoteVolume": "800"},
+            {"symbol": "RLUSDUSDT", "quoteVolume": "700"},
+            {"symbol": "PYUSDUSDT", "quoteVolume": "600"},
+            {"symbol": "USDDUSDT", "quoteVolume": "500"},
+            {"symbol": "EURCUSDT", "quoteVolume": "400"},
         ]
         self.assertEqual(DOWNLOADER.ranked_symbols(), ["BTCUSDT"])
+
+    @patch.dict("os.environ", {"MULTI_HISTORY_SYMBOLS": "BTCUSDT,ETHUSDT"})
+    @patch.object(DOWNLOADER, "get_json")
+    def test_fixed_universe_does_not_depend_on_live_volume_ranking(self, get_json):
+        self.assertEqual(DOWNLOADER.ranked_symbols(), ["BTCUSDT", "ETHUSDT"])
+        get_json.assert_not_called()
+
+    @patch.dict("os.environ", {"MULTI_HISTORY_SYMBOLS": "BTCUSDT,BTCUSDT"})
+    def test_fixed_universe_rejects_duplicate_symbols(self):
+        with self.assertRaises(ValueError):
+            DOWNLOADER.ranked_symbols()
 
 
 if __name__ == "__main__":

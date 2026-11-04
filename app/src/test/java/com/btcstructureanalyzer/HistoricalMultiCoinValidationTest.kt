@@ -5,6 +5,24 @@ import java.io.File
 
 /** Multi-coin historical research; every selected pair must have complete closed-candle data. */
 class HistoricalMultiCoinValidationTest {
+
+ private data class TimeSegment(val name:String,val start:Long,val end:Long)
+ private fun segments(candles:List<Candle>):List<TimeSegment>{
+  val start=candles.first().openTime
+  val end=candles.last().closeTime+1L
+  val duration=end-start
+  val warmup=start+50L*300000L
+  val developmentEnd=start+(duration*0.60).toLong()
+  val validationEnd=start+(duration*0.80).toLong()
+  require(warmup<developmentEnd&&developmentEnd<validationEnd&&validationEnd<end)
+  return listOf(
+   TimeSegment("development",warmup,developmentEnd),
+   TimeSegment("validation",developmentEnd,validationEnd),
+   TimeSegment("reserved_final_holdout",validationEnd,end)
+  )
+ }
+ private fun developmentWindow(candles:List<Candle>):TimeSegment = segments(candles).first()
+
  private fun requireValidSeries(candles:List<Candle>,interval:Long,label:String){
   require(candles.zipWithNext().all{(a,b)->b.openTime-a.openTime==interval}) { "Candle gap in $label" }
   require(candles.all{c->
@@ -59,7 +77,7 @@ class HistoricalMultiCoinValidationTest {
    requireValidSeries(m15,900000L,"${coin.name} 15m")
    requireValidSeries(m5,300000L,"${coin.name} 5m")
    val diagnostics=mutableMapOf<String,Int>()
-   val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+   val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
     val engine=AdaptivePredictionEngine.evaluate(AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history))
     val key="${engine.regime}|${engine.reason}|${engine.explanation}"
@@ -69,7 +87,7 @@ class HistoricalMultiCoinValidationTest {
    println("MULTI_COIN_DATASET symbol=${coin.name} bars1h=${h1.size} bars15m=${m15.size} bars5m=${m5.size}")
    diagnostics.toSortedMap().forEach{(reason,count)->println("MULTI_COIN_DIAGNOSTIC symbol=${coin.name} count=$count state=$reason")}
    result.horizons.forEach{row->
-    println("MULTI_COIN_METRIC symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_METRIC samplingStepBars=12 overlappingFor3h6h=true symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent} maxAbsReturnPct=${row.maxAbsoluteReturnPercent}")
     aggregates.add(row)
    }
   }
@@ -97,7 +115,7 @@ class HistoricalMultiCoinValidationTest {
   for(symbol in symbols){
    val coin=File(root,symbol)
    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-   val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+   val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
     val decisionTime=history.last().closeTime+1L
     AdaptivePredictionEngine.evaluate(
      AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
@@ -105,12 +123,12 @@ class HistoricalMultiCoinValidationTest {
     ).decision
    }
    result.horizons.forEach{row->
-    println("MULTI_COIN_EXPERIMENT profile=range_moderate symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_EXPERIMENT split=development samplingStepBars=12 overlappingFor3h6h=true profile=range_moderate symbol=${coin.name} horizonMinutes=${row.horizonBars*5} candidates=${row.candidateCount} signals=${row.evaluated} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
     aggregates.add(row)
    }
   }
   for(row in aggregates.results()){
-   println("MULTI_COIN_EXPERIMENT_AGGREGATE profile=range_moderate horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   println("MULTI_COIN_DEVELOPMENT_EXPERIMENT_AGGREGATE split=development samplingStepBars=12 overlappingFor3h6h=true profile=range_moderate horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
   }
  }
 
@@ -133,7 +151,7 @@ class HistoricalMultiCoinValidationTest {
    for(symbol in symbols){
     val coin=File(root,symbol)
     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-    val result=WalkForwardEvaluator.evaluate(m5,listOf(12,36,72),0.60,evaluationStep=12){history->
+    val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(12,36,72),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=12){history->
      val decisionTime=history.last().closeTime+1L
      AdaptivePredictionEngine.evaluate(
       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),config
@@ -142,12 +160,12 @@ class HistoricalMultiCoinValidationTest {
     result.horizons.forEach{aggregates.add(it)}
    }
    for(row in aggregates.results()){
-    println("MULTI_COIN_ONE_FACTOR profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    println("MULTI_COIN_DEVELOPMENT_ONE_FACTOR split=development samplingStepBars=12 overlappingFor3h6h=true profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
    }
   }
  }
 
- @Test fun compareDefaultVsAtrToleranceOnNonOverlappingOutOfSampleWindows(){
+ @Test fun compareDefaultVsAtrToleranceOnNonOverlappingDevelopmentWindows(){
   val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
   val manifestJson=JSONObject(File(root,"manifest.json").readText())
   val symbolsArray=manifestJson.getJSONArray("symbols")
@@ -162,7 +180,7 @@ class HistoricalMultiCoinValidationTest {
     for(symbol in symbols){
      val coin=File(root,symbol)
      val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
-     val result=WalkForwardEvaluator.evaluate(m5,listOf(horizon),0.60,evaluationStep=horizon){history->
+     val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(horizon),developmentWindow(m5).start,developmentWindow(m5).end,evaluationStep=horizon){history->
       val decisionTime=history.last().closeTime+1L
       AdaptivePredictionEngine.evaluate(
        AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),config
@@ -171,9 +189,164 @@ class HistoricalMultiCoinValidationTest {
      result.horizons.forEach{aggregates.add(it)}
     }
     for(row in aggregates.results()){
-     println("MULTI_COIN_NONOVERLAP profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+     println("MULTI_COIN_DEVELOPMENT_NONOVERLAP split=development samplingStepBars=$horizon overlapping=false profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
     }
    }
   }
  }
+ @Test fun reportDefaultBaselineAcrossDevelopmentAndValidation(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  for(segmentIndex in 0..1){
+   val segmentName=perCoin.getValue(symbols.first())[segmentIndex].name
+   val aggregates=MultiCoinMetricsAggregator()
+   for(symbol in symbols){
+    val coin=File(root,symbol)
+    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+    val segment=perCoin.getValue(symbol)[segmentIndex]
+    for(horizon in listOf(12,36,72)){
+     val result=WalkForwardEvaluator.evaluateSegment(m5,listOf(horizon),segment.start,segment.end,evaluationStep=horizon){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+   }
+   for(row in aggregates.results()){
+    println("THREE_WAY_BASELINE segment=$segmentName samplingStepBars=${row.horizonBars} overlapping=false horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   }
+  }
+ }
+
+
+ @Test fun compareEachRangeFilterOneFactorOnNonOverlappingDevelopmentWindows(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val defaults=RangeDetectionConfig()
+  val profiles=listOf(
+   "default" to defaults,
+   "lookback_16" to defaults.copy(boundaryLookback=16),
+   "tolerance_035" to defaults.copy(boundaryAtrTolerance=0.35),
+   "wick_090" to defaults.copy(minimumWickBodyRatio=0.90),
+   "volume_060" to defaults.copy(minimumVolumeRatio=0.60),
+   "body_008" to defaults.copy(minimumBodyAtr=0.08)
+  )
+  for((profile,rangeConfig) in profiles){
+   for(horizon in listOf(12,36,72)){
+    val aggregates=MultiCoinMetricsAggregator()
+    val config=AdaptiveEngineConfig(rangeSetup=rangeConfig)
+    for(symbol in symbols){
+     val coin=File(root,symbol)
+     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+     val segment=developmentWindow(m5)
+     val result=WalkForwardEvaluator.evaluateSegment(
+      m5,listOf(horizon),segment.start,segment.end,evaluationStep=horizon
+     ){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
+       config
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+    for(row in aggregates.results()){
+     println("MULTI_COIN_DEVELOPMENT_ONE_FACTOR_NONOVERLAP split=development samplingStepBars=$horizon overlapping=false profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    }
+   }
+  }
+ }
+
+
+ @Test fun compareLockedLookback16CandidateAgainstDefaultOnValidationOnly(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?:"build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  val profiles=listOf(
+   "default" to AdaptiveEngineConfig(),
+   "locked_lookback_16" to AdaptiveEngineConfig(
+    rangeSetup=RangeDetectionConfig(boundaryLookback=16)
+   )
+  )
+  for((profile,config) in profiles){
+   for(horizon in listOf(12,36,72)){
+    val aggregates=MultiCoinMetricsAggregator()
+    for(symbol in symbols){
+     val coin=File(root,symbol)
+     val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+     val validation=perCoin.getValue(symbol)[1]
+     require(validation.name=="validation") { "Candidate confirmation must use validation only" }
+     val result=WalkForwardEvaluator.evaluateSegment(
+      m5,listOf(horizon),validation.start,validation.end,evaluationStep=horizon
+     ){history->
+      val decisionTime=history.last().closeTime+1L
+      AdaptivePredictionEngine.evaluate(
+       AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history),
+       config
+      ).decision
+     }
+     result.horizons.forEach{aggregates.add(it)}
+    }
+    for(row in aggregates.results()){
+     println("LOCKED_CANDIDATE_VALIDATION split=validation samplingStepBars=$horizon overlapping=false profile=$profile horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+    }
+   }
+  }
+ }
+
+
+ @Test fun evaluateFrozenDefaultOnFinalHoldoutOnce(){
+  val root=File(System.getenv("MULTI_HISTORY_DIR")?: "build/multi-coin-history")
+  val manifestJson=JSONObject(File(root,"manifest.json").readText())
+  val symbolsArray=manifestJson.getJSONArray("symbols")
+  val symbols=(0 until symbolsArray.length()).map{symbolsArray.getString(it)}
+  val perCoin=mutableMapOf<String,List<TimeSegment>>()
+  for(symbol in symbols){
+   val coin=File(root,symbol)
+   perCoin[symbol]=segments(load(File(coin,"5m.csv")))
+  }
+  val aggregatesByHorizon=mutableMapOf<Int,MultiCoinMetricsAggregator>()
+  for(horizon in listOf(12,36,72)){
+   val aggregates=MultiCoinMetricsAggregator()
+   for(symbol in symbols){
+    val coin=File(root,symbol)
+    val h1=load(File(coin,"1h.csv"));val m15=load(File(coin,"15m.csv"));val m5=load(File(coin,"5m.csv"))
+    val holdout=perCoin.getValue(symbol)[2]
+    require(holdout.name=="reserved_final_holdout") { "Final holdout segment identity changed" }
+    val result=WalkForwardEvaluator.evaluateSegment(
+     m5,listOf(horizon),holdout.start,holdout.end,evaluationStep=horizon
+    ){history->
+     val decisionTime=history.last().closeTime+1L
+     AdaptivePredictionEngine.evaluate(
+      AdaptiveEngineInput(decisionTime,h1.filter{it.closeTime<decisionTime},m15.filter{it.closeTime<decisionTime},history)
+     ).decision
+    }
+    result.horizons.forEach{aggregates.add(it)}
+   }
+   aggregatesByHorizon[horizon]=aggregates
+  }
+  for((horizon,aggregates) in aggregatesByHorizon){
+   for(row in aggregates.results()){
+    println("FINAL_HOLDOUT_FROZEN_DEFAULT split=reserved_final_holdout samplingStepBars=$horizon overlapping=false profile=default horizonMinutes=${row.horizonBars*5} coins=${symbols.size} candidates=${row.candidateCount} signals=${row.evaluated} hits=${row.directionalHits} misses=${row.misses} neutral=${row.neutral} waits=${row.waitCount} coveragePct=${row.coveragePercent} hitRatePct=${row.hitRatePercent} meanSignedReturnPct=${row.meanSignedReturnPercent}")
+   }
+  }
+ }
+
 }
