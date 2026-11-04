@@ -66,27 +66,25 @@ jobs:
           assert manifest["requestedDays"] >= 180
           assert set(manifest["datasetCoverage"]) == set(manifest["symbols"])
           PY
-      - name: Run focused Kotlin tests
-        run: |
-          gradle --no-daemon testDebugUnitTest \
-            --tests com.btcstructureanalyzer.RangeReversalDetectorTest \
-            --tests com.btcstructureanalyzer.TrendSetupDetectorTest \
-            --tests com.btcstructureanalyzer.AdaptivePredictionEngineTest \
-            --tests com.btcstructureanalyzer.WalkForwardEvaluatorTest
-      - name: Run one consolidated chronological research batch
+      - name: Run one fresh-data candidate comparison and focused tests
         env:
           MULTI_HISTORY_DIR: ${{ github.workspace }}/build/multi-coin-history
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.HistoricalMultiCoinValidationTest 2>&1 | tee build/research-report.log
-      - name: Retain exact dataset, manifest and research report
+          gradle --no-daemon testDebugUnitTest \
+            --tests com.btcstructureanalyzer.RangeReversalDetectorTest \
+            --tests com.btcstructureanalyzer.TrendSetupDetectorTest \
+            --tests com.btcstructureanalyzer.AdaptivePredictionEngineTest \
+            --tests com.btcstructureanalyzer.WalkForwardEvaluatorTest \
+            --tests com.btcstructureanalyzer.PredictionLabCandidateComparisonTest 2>&1 | tee build/candidate-comparison-report.log
+      - name: Retain exact fresh dataset, manifest and comparison report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: prediction-lab-research-${{ github.run_number }}
+          name: prediction-lab-candidate-comparison-${{ github.run_number }}
           path: |
             build/multi-coin-history/
-            build/research-report.log
+            build/candidate-comparison-report.log
           if-no-files-found: warn
           retention-days: 30
