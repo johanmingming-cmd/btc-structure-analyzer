@@ -29,7 +29,9 @@ object SignalExport {
         Horizon(10, r.price10m, r.result10m, r.evaluationTime10m, r.priceSource10m),
         Horizon(15, r.price15m, r.result15m, r.evaluationTime15m, r.priceSource15m),
         Horizon(30, r.price30m, r.result30m, r.evaluationTime30m, r.priceSource30m),
-        Horizon(60, r.price60m, r.result60m, r.evaluationTime60m, r.priceSource60m)
+        Horizon(60, r.price60m, r.result60m, r.evaluationTime60m, r.priceSource60m),
+        Horizon(180, r.price180m, r.result180m, r.evaluationTime180m, r.priceSource180m),
+        Horizon(360, r.price360m, r.result360m, r.evaluationTime360m, r.priceSource360m)
     )
 
     /** Quality is cohort-aware so legacy records cannot be mistaken for prospective samples. */
@@ -44,13 +46,13 @@ object SignalExport {
     }
 
     private fun signalsCsv(records: List<SignalRecord>): String = buildString {
-        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,supports,resistances,result_10m,result_15m,result_30m,result_60m")
+        appendLine("signal_id,cohort,signal_time_utc,symbol,direction,signal_price,score,supports,resistances,result_10m,result_15m,result_30m,result_60m,result_180m,result_360m")
         records.forEach { r ->
             appendLine(listOf(
                 csv(r.id), csv(r.cohort), csv(isoUtc(r.time)), csv(r.symbol), csv(r.direction), num(r.price), r.score.toString(),
                 csv(r.supports.joinToString("|") { it.toString() }),
                 csv(r.resistances.joinToString("|") { it.toString() }),
-                csv(r.result10m), csv(r.result15m), csv(r.result30m), csv(r.result60m)
+                csv(r.result10m), csv(r.result15m), csv(r.result30m), csv(r.result60m), csv(r.result180m), csv(r.result360m)
             ).joinToString(","))
         }
     }
@@ -143,7 +145,7 @@ Cohort metadata: LEGACY records predate prospective cohort tracking; PROSPECTIVE
 
 FILES
 - signals.csv: one row per stored signal.
-- evaluations.csv: one row per signal and horizon (10, 15, 30, 60 minutes).
+- evaluations.csv: one row per signal and horizon (10, 15, 30, 60 minutes, 3 hours, 6 hours).
 - signal-analysis.json: structured archive including limitations and derived fields.
 - README.txt: this documentation.
 
