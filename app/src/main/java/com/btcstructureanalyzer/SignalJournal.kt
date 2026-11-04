@@ -348,8 +348,8 @@ object SignalJournal {
         price: Double,
         candleCloseTime: Long,
         source: String = "BINANCE_SPOT_1M_CANDLE_CLOSE"
-    ) = synchronized(lock) {
-        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60, 180, 360)) return@synchronized
+    ): Boolean = synchronized(lock) {
+        if (price <= 0.0 || !price.isFinite() || horizonMinutes !in setOf(10, 15, 30, 60, 180, 360)) return@synchronized false
         val records = read(context)
         val updated = records.map { record ->
             if (record.id != signalId) return@map record
@@ -387,7 +387,9 @@ object SignalJournal {
                 else -> record.copy(price360m = price, result360m = result, evaluationTime360m = candleCloseTime, priceSource360m = source)
             }
         }
-        if (updated != records) writeLocked(context, updated)
+        if (updated == records) return@synchronized false
+        writeLocked(context, updated)
+        true
     }
 
     fun fmt(price: Double): String = when {
