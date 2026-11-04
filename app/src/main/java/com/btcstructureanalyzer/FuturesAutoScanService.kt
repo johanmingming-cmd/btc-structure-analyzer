@@ -45,6 +45,8 @@ class FuturesAutoScanService : Service() {
             scanJob = serviceScope.launch {
                 while (true) {
                     try {
+                        updateOngoing("Mengevaluasi sinyal forward test")
+                        evaluateDueSignals()
                         updateOngoing("Memindai Binance Spot • 1H / 15M / 5M")
                         val results = CoinScanner(BinanceRepository(), applicationContext).scan(15)
                         notifyNewSignals(results)
@@ -62,6 +64,48 @@ class FuturesAutoScanService : Service() {
             }
         }
         return START_STICKY
+    }
+
+    /**
+     * Evaluate only PROSPECTIVE_V1 signals automatically on each background scan cycle.
+     * Legacy records are excluded by SignalJournal.pendingEvaluations.
+     */
+    private suspend fun evaluateDueSignals() {
+        val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        val repo = BinanceRepository()
+        val due = SignalJournal.pendingEvaluations(applicationContext).take(MAX_EVALUATIONS_PER_CYCLE)
+        var updated = 0
+        var failed = 0
+        var lastError: String? = null
+        for (item in due) {
+            try {
+                val historical = repo.historicalSpotClose(item.symbol, item.targetTime)
+                if (historical != null) {
+                    SignalJournal.updateHistoricalEvaluation(
+                        applicationContext, item.signalId, item.horizonMinutes, historical.first, historical.second
+                    )
+                    updated++
+                } else {
+                    failed++
+                    lastError = "Candle ${item.symbol} ${item.horizonMinutes}m belum tersedia"
+                }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                failed++
+                lastError = error.message ?: "Gagal mengambil candle historis"
+            }
+        }
+        val remaining = SignalJournal.pendingEvaluations(applicationContext).size
+        prefs.edit()
+            .putInt("forward_eval_last_attempted", due.size)
+            .putInt("forward_eval_last_updated", updated)
+            .putInt("forward_eval_last_failed", failed)
+            .putInt("forward_eval_pending", remaining)
+            .putLong("forward_eval_last_run", System.currentTimeMillis())
+            .apply()
+        if (lastError != null) prefs.edit().putString("forward_eval_last_error", lastError).apply()
+        else if (due.isNotEmpty()) prefs.edit().remove("forward_eval_last_error").apply()
+        if (due.isNotEmpty()) updateOngoing("Evaluasi forward test • ${updated} berhasil • ${failed} gagal • ${remaining} menunggu")
     }
 
     private fun notifyNewSignals(results: List<ScannedCoin>) {
@@ -155,6 +199,7 @@ class FuturesAutoScanService : Service() {
 
     companion object {
         private const val SCAN_INTERVAL_MS = 10 * 60 * 1000L
+        private const val MAX_EVALUATIONS_PER_CYCLE = 24
         private const val ONGOING_CHANNEL = "spot_auto_scan_status"
         private const val SIGNAL_CHANNEL = "spot_new_signals"
         private const val ONGOING_ID = 4200
