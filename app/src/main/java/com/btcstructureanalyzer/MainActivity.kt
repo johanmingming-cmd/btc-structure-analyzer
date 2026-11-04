@@ -107,6 +107,12 @@ private fun AnalyzerApp(context: Context) {
     var spotLastScan by remember { mutableLongStateOf(0L) }
     var spotLastCount by remember { mutableIntStateOf(-1) }
     var spotLastError by remember { mutableStateOf<String?>(null) }
+    var evalLastRun by remember { mutableLongStateOf(0L) }
+    var evalLastAttempted by remember { mutableIntStateOf(0) }
+    var evalLastUpdated by remember { mutableIntStateOf(0) }
+    var evalLastFailed by remember { mutableIntStateOf(0) }
+    var evalPending by remember { mutableIntStateOf(0) }
+    var evalLastError by remember { mutableStateOf<String?>(null) }
     var history by remember { mutableStateOf(emptyList<SavedRun>()) }
     var signalHistory by remember { mutableStateOf(emptyList<SignalRecord>()) }
     var signalHistoryError by remember { mutableStateOf<String?>(null) }
@@ -200,7 +206,23 @@ private fun AnalyzerApp(context: Context) {
                 spotLastScan = scanPrefs.getLong("spot_last_scan", 0L)
                 spotLastCount = scanPrefs.getInt("spot_last_count", -1)
                 spotLastError = scanPrefs.getString("spot_last_error", null)
+                evalLastRun = scanPrefs.getLong("forward_eval_last_run", 0L)
+                evalLastAttempted = scanPrefs.getInt("forward_eval_last_attempted", 0)
+                evalLastUpdated = scanPrefs.getInt("forward_eval_last_updated", 0)
+                evalLastFailed = scanPrefs.getInt("forward_eval_last_failed", 0)
+                evalPending = scanPrefs.getInt("forward_eval_pending", SignalJournal.pendingEvaluations(context).size)
+                evalLastError = scanPrefs.getString("forward_eval_last_error", null)
                 delay(2000)
+            }
+        }
+    }
+    // The service writes the journal independently. Refresh the visible list while
+    // the History tab is open so persisted automatic results appear without a manual tap.
+    LaunchedEffect(selected) {
+        if (selected == "Riwayat") {
+            while (true) {
+                reloadSignalHistory()
+                delay(3000)
             }
         }
     }
@@ -893,6 +915,24 @@ private fun AnalyzerApp(context: Context) {
                                         color = if (spotLastError.isNullOrBlank()) Muted else Red, fontSize = 12.sp
                                     )
                                     Text("Status dibaca dari penyimpanan lokal dan diperbarui saat halaman ini terbuka.", color = Muted, fontSize = 10.sp)
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel2), shape = RoundedCornerShape(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text("DIAGNOSTIK EVALUASI OTOMATIS", color = Blue, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(
+                                        if (evalLastRun > 0L) "Evaluasi terakhir: " + SimpleDateFormat("dd MMM HH:mm:ss", Locale("id", "ID")).format(Date(evalLastRun))
+                                        else "Evaluasi terakhir: belum tercatat",
+                                        color = Color.White, fontSize = 12.sp
+                                    )
+                                    Text("Percobaan: $evalLastAttempted • tersimpan: $evalLastUpdated • gagal: $evalLastFailed", color = Color.White, fontSize = 12.sp)
+                                    Text("Antrean jatuh tempo: $evalPending", color = Color.White, fontSize = 12.sp)
+                                    Text(
+                                        if (evalLastError.isNullOrBlank()) "Error evaluasi terakhir: tidak ada yang tersimpan"
+                                        else "Error evaluasi terakhir: $evalLastError",
+                                        color = if (evalLastError.isNullOrBlank()) Muted else Red, fontSize = 11.sp
+                                    )
+                                    Text("Evaluasi otomatis berjalan terpisah dari scan market, dengan interval sekitar 60 detik saat layanan aktif.", color = Muted, fontSize = 10.sp)
                                 }
                             }
                             Divider(color = Color(0xFF24364A))
