@@ -310,7 +310,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
 
 
 /** Candidate ordering rank only. It is not directional confidence, probability, or expected return. */
-internal fun calculateScannerScore(
+internal fun calculateCandidateRankingScore(
     quoteVolume: Double,
     netMove: Double,
     referenceOpen: Double,
