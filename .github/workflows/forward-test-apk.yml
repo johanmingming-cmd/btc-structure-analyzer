@@ -1,6 +1,13 @@
 name: Prediction Lab Forward Test APK
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      run_build:
+        description: 'Confirm one forward-test APK build'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
