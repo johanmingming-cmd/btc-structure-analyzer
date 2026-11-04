@@ -305,33 +305,40 @@ object SignalJournal {
         if (additions.isNotEmpty()) writeLocked(context, additions + records)
     }
 
-    /** Returns due horizons that still need a historical Spot candle evaluation. */
-    fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> = synchronized(lock) {
-        read(context).flatMap { record ->
-            listOf(10, 15, 30, 60, 180, 360).mapNotNull { horizon ->
-                val target = record.time + horizon * 60_000L
-                val price = when (horizon) {
-                    10 -> record.price10m
-                    15 -> record.price15m
-                    30 -> record.price30m
-                    60 -> record.price60m
-                    180 -> record.price180m
-                    else -> record.price360m
-                }
-                val evaluatedAt = when (horizon) {
-                    10 -> record.evaluationTime10m
-                    15 -> record.evaluationTime15m
-                    30 -> record.evaluationTime30m
-                    60 -> record.evaluationTime60m
-                    180 -> record.evaluationTime180m
-                    else -> record.evaluationTime360m
-                }
-                val needsRecheck = price == null || evaluatedAt == null ||
-                    evaluatedAt > target || target - evaluatedAt > 60_000L
-                if (needsRecheck && now >= target) PendingEvaluation(record.id, record.symbol, horizon, target) else null
+    /** Only prospective forward-test signals are eligible; legacy history is display-only. */
+    fun pendingEvaluations(context: Context, now: Long = System.currentTimeMillis()): List<PendingEvaluation> =
+        pendingEvaluations(read(context), now)
+
+    /** Pure queue builder exposed for deterministic unit tests. */
+    fun pendingEvaluations(records: List<SignalRecord>, now: Long): List<PendingEvaluation> =
+        records.asSequence()
+            .filter { it.cohort == "PROSPECTIVE_V1" }
+            .flatMap { record ->
+                listOf(10, 15, 30, 60, 180, 360).mapNotNull { horizon ->
+                    val target = record.time + horizon * 60_000L
+                    val price = when (horizon) {
+                        10 -> record.price10m
+                        15 -> record.price15m
+                        30 -> record.price30m
+                        60 -> record.price60m
+                        180 -> record.price180m
+                        else -> record.price360m
+                    }
+                    val evaluatedAt = when (horizon) {
+                        10 -> record.evaluationTime10m
+                        15 -> record.evaluationTime15m
+                        30 -> record.evaluationTime30m
+                        60 -> record.evaluationTime60m
+                        180 -> record.evaluationTime180m
+                        else -> record.evaluationTime360m
+                    }
+                    val needsEvaluation = price == null || evaluatedAt == null ||
+                        evaluatedAt > target || target - evaluatedAt > 60_000L
+                    if (needsEvaluation && now >= target) PendingEvaluation(record.id, record.symbol, horizon, target) else null
+                }.asSequence()
             }
-        }.sortedBy { it.targetTime }
-    }
+            .sortedBy { it.targetTime }
+            .toList()
 
     /** Stores only a completed historical Spot candle close at or immediately before its target. */
     fun updateHistoricalEvaluation(
