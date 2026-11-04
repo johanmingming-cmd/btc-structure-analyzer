@@ -18,6 +18,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
@@ -81,17 +84,17 @@ class FuturesAutoScanService : Service() {
     }
 
     /**
-     * Evaluate only PROSPECTIVE_V1 signals automatically on each background scan cycle.
+     * Evaluate only due PROSPECTIVE_V1 signals on a separate one-minute cadence.
      * Legacy records are excluded by SignalJournal.pendingEvaluations.
      */
     private suspend fun evaluateDueSignals() {
         val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
         val repo = BinanceRepository()
         val due = SignalJournal.pendingEvaluations(applicationContext).take(MAX_EVALUATIONS_PER_CYCLE)
-        val permits = kotlinx.coroutines.sync.Semaphore(4)
-        val results = kotlinx.coroutines.coroutineScope {
+        val permits = Semaphore(4)
+        val results = coroutineScope {
             due.map { item ->
-                kotlinx.coroutines.async(Dispatchers.IO) {
+                async(Dispatchers.IO) {
                     permits.withPermit {
                         try {
                             val historical = repo.historicalSpotClose(item.symbol, item.targetTime)
