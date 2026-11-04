@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
 /**
@@ -28,6 +29,7 @@ import java.util.concurrent.TimeUnit
 class FuturesAutoScanService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var scanJob: Job? = null
+    private var evaluationJob: Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -41,12 +43,24 @@ class FuturesAutoScanService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (evaluationJob?.isActive != true) {
+            evaluationJob = serviceScope.launch {
+                while (true) {
+                    try {
+                        evaluateDueSignals()
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        prefs.edit().putString("forward_eval_last_error", error.message ?: "Evaluasi forward test gagal").apply()
+                    }
+                    delay(EVALUATION_INTERVAL_MS)
+                }
+            }
+        }
         if (scanJob?.isActive != true) {
             scanJob = serviceScope.launch {
                 while (true) {
                     try {
-                        updateOngoing("Mengevaluasi sinyal forward test")
-                        evaluateDueSignals()
                         updateOngoing("Memindai Binance Spot • 1H / 15M / 5M")
                         val results = CoinScanner(BinanceRepository(), applicationContext).scan(15)
                         notifyNewSignals(results)
@@ -74,27 +88,31 @@ class FuturesAutoScanService : Service() {
         val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
         val repo = BinanceRepository()
         val due = SignalJournal.pendingEvaluations(applicationContext).take(MAX_EVALUATIONS_PER_CYCLE)
-        var updated = 0
-        var failed = 0
-        var lastError: String? = null
-        for (item in due) {
-            try {
-                val historical = repo.historicalSpotClose(item.symbol, item.targetTime)
-                if (historical != null) {
-                    SignalJournal.updateHistoricalEvaluation(
-                        applicationContext, item.signalId, item.horizonMinutes, historical.first, historical.second
-                    )
-                    updated++
-                } else {
-                    failed++
-                    lastError = "Candle ${item.symbol} ${item.horizonMinutes}m belum tersedia"
+        val permits = kotlinx.coroutines.sync.Semaphore(4)
+        val results = kotlinx.coroutines.coroutineScope {
+            due.map { item ->
+                kotlinx.coroutines.async(Dispatchers.IO) {
+                    permits.withPermit {
+                        try {
+                            val historical = repo.historicalSpotClose(item.symbol, item.targetTime)
+                            if (historical == null) item to (false to "Candle ${item.symbol} ${item.horizonMinutes}m belum tersedia")
+                            else {
+                                val saved = SignalJournal.updateHistoricalEvaluation(
+                                    applicationContext, item.signalId, item.horizonMinutes, historical.first, historical.second
+                                )
+                                item to (saved to if (saved) null else "Hasil ${item.symbol} ${item.horizonMinutes}m tidak tersimpan")
+                            }
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            item to (false to (error.message ?: "Gagal mengambil candle historis"))
+                        }
+                    }
                 }
-            } catch (error: Exception) {
-                if (error is CancellationException) throw error
-                failed++
-                lastError = error.message ?: "Gagal mengambil candle historis"
-            }
+            }.map { it.await() }
         }
+        val updated = results.count { it.second.first }
+        val failed = results.count { !it.second.first }
+        val lastError = results.firstOrNull { !it.second.first }?.second?.second
         val remaining = SignalJournal.pendingEvaluations(applicationContext).size
         prefs.edit()
             .putInt("forward_eval_last_attempted", due.size)
@@ -191,6 +209,7 @@ class FuturesAutoScanService : Service() {
 
     override fun onDestroy() {
         scanJob?.cancel()
+        evaluationJob?.cancel()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -199,6 +218,7 @@ class FuturesAutoScanService : Service() {
 
     companion object {
         private const val SCAN_INTERVAL_MS = 10 * 60 * 1000L
+        private const val EVALUATION_INTERVAL_MS = 60 * 1000L
         private const val MAX_EVALUATIONS_PER_CYCLE = 24
         private const val ONGOING_CHANNEL = "spot_auto_scan_status"
         private const val SIGNAL_CHANNEL = "spot_new_signals"
