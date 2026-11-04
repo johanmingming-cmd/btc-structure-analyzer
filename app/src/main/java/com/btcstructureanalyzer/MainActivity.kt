@@ -628,8 +628,8 @@ private fun AnalyzerApp(context: Context) {
                 }
                 "Riwayat" -> {
                     item {
-                        Text("RIWAYAT SINYAL SEMUA KOIN", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Maksimal 500 sinyal • tersimpan lokal • hasil berdasarkan perubahan harga", color = Muted, fontSize = 12.sp)
+                        Text("FORWARD TEST • RIWAYAT SINYAL", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Sinyal baru dicatat saat scanner berjalan • evaluasi harga aktual Binance Spot", color = Muted, fontSize = 12.sp)
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -722,10 +722,12 @@ private fun AnalyzerApp(context: Context) {
                                 Text("15 menit • arah harga: ${run.result15m} ${run.price15m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime15m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result15m == "ARAH_POSITIF") Green else if (run.result15m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("30 menit • arah harga: ${run.result30m} ${run.price30m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime30m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result30m == "ARAH_POSITIF") Green else if (run.result30m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                                 Text("1 jam • arah harga: ${run.result60m} ${run.price60m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime60m?.let { " • " + SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result60m == "ARAH_POSITIF") Green else if (run.result60m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("3 jam • arah harga: ${run.result180m} ${run.price180m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime180m?.let { " • " + SimpleDateFormat("dd/MM HH:mm", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result180m == "ARAH_POSITIF") Green else if (run.result180m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
+                                Text("6 jam • arah harga: ${run.result360m} ${run.price360m?.let { "(${SignalJournal.fmt(it)})" } ?: ""}${run.evaluationTime360m?.let { " • " + SimpleDateFormat("dd/MM HH:mm", Locale.US).format(Date(it)) } ?: ""}", color = if (run.result360m == "ARAH_POSITIF") Green else if (run.result360m == "ARAH_NEGATIF") Red else Muted, fontSize = 11.sp)
                             }
                         }
                     }
-                    item { Text("Evaluasi 10/15/30/60 menit menunjukkan arah harga, bukan hasil TP/SL atau bukti profit. Tidak termasuk biaya dan slippage.", color = Muted, fontSize = 10.sp) }
+                    item { Text("Forward test mencatat hasil arah harga pada 10/15/30 menit serta 1/3/6 jam setelah sinyal. Ini bukan hasil TP/SL atau bukti profit; biaya dan slippage tidak dihitung.", color = Muted, fontSize = 10.sp) }
                 }
                 "Detail Struktur" -> {
                     item {
