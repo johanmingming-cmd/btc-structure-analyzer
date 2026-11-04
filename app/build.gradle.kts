@@ -12,8 +12,8 @@ android {
         applicationId = "com.predictionlab.analyzer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.5.3-forward-test"
+        versionCode = 19
+        versionName = "1.5.4-forward-evaluation-fix"
     }
     signingConfigs {
         create("release") {
