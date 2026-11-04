@@ -13,6 +13,7 @@ on:
       - diagnostics/spot-scan-status
       - feature/stage1-evaluation-10m-ui-cleanup
       - fix/prediction-lab-audit-2026
+      - fix/forward-evaluation-backlog
 
 permissions:
   contents: read
