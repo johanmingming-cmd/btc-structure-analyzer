@@ -215,7 +215,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 } else {
                     supports.firstOrNull()?.let { ((lastPrice - it) / lastPrice) * 100.0 }
                 }
-                val score = calculateScannerScore(
+                val score = calculateCandidateRankingScore(
                     quoteVolume = quoteVolume,
                     netMove = netMove,
                     referenceOpen = closed5m.first().open,
@@ -309,7 +309,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
 }
 
 
-/** A bounded ranking score, not a probability or trade win rate. */
+/** Candidate ordering rank only. It is not directional confidence, probability, or expected return. */
 internal fun calculateScannerScore(
     quoteVolume: Double,
     netMove: Double,
