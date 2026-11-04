@@ -43,6 +43,28 @@ class SignalJournalCodecTest {
         assertEquals(original, restored)
     }
 
+    @Test fun evaluationQueueExcludesLegacyRecordsAndKeepsOnlyDueProspectiveHorizons() {
+        val time = 1_700_000_000_000L
+        val now = time + 20 * 60_000L
+        val legacy = record("legacy").copy(cohort = "LEGACY", time = time)
+        val prospective = record("prospective").copy(time = time)
+        val due = SignalJournal.pendingEvaluations(listOf(legacy, prospective), now)
+        assertEquals(listOf(10, 15), due.map { it.horizonMinutes })
+        assertTrue(due.all { it.signalId == "prospective" })
+    }
+
+    @Test fun evaluationQueueSkipsAlreadyEvaluatedProspectiveHorizons() {
+        val time = 1_700_000_000_000L
+        val prospective = record().copy(
+            time = time,
+            price10m = 65_100.0,
+            evaluationTime10m = time + 10 * 60_000L,
+            result10m = "ARAH_POSITIF"
+        )
+        val due = SignalJournal.pendingEvaluations(listOf(prospective), time + 20 * 60_000L)
+        assertEquals(listOf(15), due.map { it.horizonMinutes })
+    }
+
     @Test fun oldRecordsWithoutTpSlFieldsRemainReadable() {
         val old = """[{"id":"old-1","time":1700000000000,"symbol":"BTCUSDT","direction":"LONG","price":65000.0,"score":80,"supports":[64500.0],"resistances":[65500.0]}]"""
         val restored = SignalJournal.parseRecords(old).single()
