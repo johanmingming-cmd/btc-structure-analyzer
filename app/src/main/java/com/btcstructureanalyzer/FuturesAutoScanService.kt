@@ -54,7 +54,13 @@ class FuturesAutoScanService : Service() {
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {
-                        prefs.edit().putString("forward_eval_last_error", error.message ?: "Evaluasi forward test gagal").apply()
+                        prefs.edit()
+                            .putLong("forward_eval_last_run", System.currentTimeMillis())
+                            .putString("forward_eval_last_error", error.message ?: "Evaluasi forward test gagal")
+                            .putInt("forward_eval_pending", runCatching {
+                                SignalJournal.pendingEvaluations(applicationContext).size
+                            }.getOrDefault(-1))
+                            .apply()
                     }
                     delay(EVALUATION_INTERVAL_MS)
                 }
@@ -89,6 +95,13 @@ class FuturesAutoScanService : Service() {
      */
     private suspend fun evaluateDueSignals() {
         val prefs = getSharedPreferences("btc_structure", Context.MODE_PRIVATE)
+        // Record that a cycle started, even if queue loading or a later step fails.
+        prefs.edit()
+            .putLong("forward_eval_last_run", System.currentTimeMillis())
+            .putInt("forward_eval_last_attempted", 0)
+            .putInt("forward_eval_last_updated", 0)
+            .putInt("forward_eval_last_failed", 0)
+            .apply()
         val repo = BinanceRepository()
         val due = SignalJournal.pendingEvaluations(applicationContext).take(MAX_EVALUATIONS_PER_CYCLE)
         val permits = Semaphore(4)
@@ -125,7 +138,7 @@ class FuturesAutoScanService : Service() {
             .putLong("forward_eval_last_run", System.currentTimeMillis())
             .apply()
         if (lastError != null) prefs.edit().putString("forward_eval_last_error", lastError).apply()
-        else if (due.isNotEmpty()) prefs.edit().remove("forward_eval_last_error").apply()
+        else prefs.edit().remove("forward_eval_last_error").apply()
         if (due.isNotEmpty()) updateOngoing("Evaluasi forward test • ${updated} berhasil • ${failed} gagal • ${remaining} menunggu")
     }
 
