@@ -1,0 +1,105 @@
+name: Prediction Lab Fresh Candidate Comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      end_time_ms:
+        description: "Optional fixed dataset end time in Unix milliseconds"
+        required: false
+        type: string
+      symbols:
+        description: "Optional comma-separated fixed USDT universe (at least 10 symbols)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout isolated experiment branch
+        uses: actions/checkout@v4
+        with:
+          ref: experiment/prediction-lab-research-harness
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
+      - name: Install Android test SDK
+        shell: bash
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Validate downloader
+        run: |
+          python -m py_compile scripts/download_binance_multi_coin_history.py
+          python -m unittest scripts.test_download_binance_multi_coin_history -v
+
+      - name: Download one fresh 180-day dataset
+        env:
+          MULTI_HISTORY_DAYS: "180"
+          MULTI_HISTORY_COINS: "10"
+          MULTI_HISTORY_END_TIME_MS: ${{ inputs.end_time_ms }}
+          MULTI_HISTORY_SYMBOLS: ${{ inputs.symbols }}
+          MULTI_HISTORY_DIR: ${{ github.workspace }}/build/multi-coin-history
+        run: python scripts/download_binance_multi_coin_history.py
+
+      - name: Verify fresh dataset manifest
+        shell: bash
+        run: |
+          test "$(find "$GITHUB_WORKSPACE/build/multi-coin-history" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ge 10
+          test -s "$GITHUB_WORKSPACE/build/multi-coin-history/manifest.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest=json.loads(Path("build/multi-coin-history/manifest.json").read_text())
+          print(json.dumps(manifest, indent=2))
+          assert len(manifest["symbols"]) == manifest["requestedCoins"]
+          assert manifest["requestedCoins"] >= 10
+          assert manifest["requestedDays"] >= 180
+          assert set(manifest["datasetCoverage"]) == set(manifest["symbols"])
+          PY
+
+      - name: Run one fresh-data candidate comparison and focused tests
+        env:
+          MULTI_HISTORY_DIR: ${{ github.workspace }}/build/multi-coin-history
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon testDebugUnitTest \
+            --tests com.btcstructureanalyzer.RangeReversalDetectorTest \
+            --tests com.btcstructureanalyzer.TrendSetupDetectorTest \
+            --tests com.btcstructureanalyzer.AdaptivePredictionEngineTest \
+            --tests com.btcstructureanalyzer.WalkForwardEvaluatorTest \
+            --tests com.btcstructureanalyzer.PredictionLabCandidateComparisonTest 2>&1 | tee build/candidate-comparison-report.log
+
+      - name: Retain exact dataset, manifest and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prediction-lab-candidate-comparison-${{ github.run_number }}
+          path: |
+            build/multi-coin-history/
+            build/candidate-comparison-report.log
+          if-no-files-found: warn
+          retention-days: 30
