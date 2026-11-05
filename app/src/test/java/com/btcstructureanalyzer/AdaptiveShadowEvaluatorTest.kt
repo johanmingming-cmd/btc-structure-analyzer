@@ -65,6 +65,18 @@ class AdaptiveShadowEvaluatorTest {
         assertNull(record.agreesWithLegacy)
     }
 
+    @Test
+    fun completedHourCutoffDoesNotAdvanceUntilTheHourActuallyChanges() {
+        val hour = 1_800_000_000_000L / 3_600_000L * 3_600_000L
+        assertEquals(hour + 1L, completedHourDecisionTime(hour + 3_599_999L))
+        assertEquals(hour + 3_600_001L, completedHourDecisionTime(hour + 3_600_000L))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonPositiveClockForCompletedHourCutoff() {
+        completedHourDecisionTime(0L)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsInvalidReferencePrice() {
         AdaptiveShadowEvaluator.evaluate("BTCUSDT", Double.NaN, AdaptiveDecision.LONG, input())
