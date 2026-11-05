@@ -52,6 +52,9 @@ data class ScanDiagnostics(
     val adaptiveLegacyWait: Int = 0,
     val adaptiveErrors: Int = 0,
     val adaptiveSamples: List<String> = emptyList(),
+    val adaptiveRecordsSaved: Int = 0,
+    val adaptiveJournalTotal: Int = 0,
+    val adaptiveJournalError: String? = null,
     val lastError: String? = null
 )
 
@@ -116,6 +119,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var adaptiveLegacyWait = 0
         var adaptiveErrors = 0
         val adaptiveSamples = mutableListOf<String>()
+        val adaptiveShadows = mutableListOf<AdaptiveShadowRecord>()
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -188,6 +192,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                         symbol, lastPrice, legacyDirection,
                         AdaptiveEngineInput(adaptiveDecisionTime, c1h, c15, c5)
                     )
+                    adaptiveShadows += shadow
                     adaptiveEvaluated++
                     when (shadow.adaptive.decision) {
                         AdaptiveDecision.LONG -> adaptiveLong++
@@ -279,6 +284,15 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 dataErrors++
             }
         }
+        var adaptiveRecordsSaved = 0
+        var adaptiveJournalTotal = 0
+        var adaptiveJournalError: String? = null
+        try {
+            adaptiveRecordsSaved = AdaptivePredictionJournal.record(context, adaptiveShadows)
+            adaptiveJournalTotal = AdaptivePredictionJournal.read(context).size
+        } catch (error: Exception) {
+            adaptiveJournalError = error.message ?: "Gagal menyimpan jurnal Adaptive"
+        }
         lastDiagnostics = ScanDiagnostics(
             spotPairs = tickers.length(),
             futuresWhitelist = futuresSymbols.size,
@@ -309,7 +323,10 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             adaptiveDisagree = adaptiveDisagree,
             adaptiveLegacyWait = adaptiveLegacyWait,
             adaptiveErrors = adaptiveErrors,
-            adaptiveSamples = adaptiveSamples.toList()
+            adaptiveSamples = adaptiveSamples.toList(),
+            adaptiveRecordsSaved = adaptiveRecordsSaved,
+            adaptiveJournalTotal = adaptiveJournalTotal,
+            adaptiveJournalError = adaptiveJournalError
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
