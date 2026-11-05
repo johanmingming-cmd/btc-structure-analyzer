@@ -45,7 +45,7 @@ object AdaptiveSignalNotifier {
         val lines = signals.take(8).map { record ->
             val price = String.format(java.util.Locale.US, "%.8f", record.referencePrice)
                 .trimEnd('0').trimEnd('.')
-            "${record.symbol} • ${record.decision} • $$price • ${record.setupFamily} • kualitas ${record.qualityScore}/100"
+            "${record.symbol} • ${record.decision} • \\${price} • ${record.setupFamily} • kualitas ${record.qualityScore}/100"
         }
         val extra = (signals.size - lines.size).coerceAtLeast(0)
         val detail = lines.joinToString("\n") +
