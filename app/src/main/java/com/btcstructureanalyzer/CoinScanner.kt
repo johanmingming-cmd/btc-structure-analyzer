@@ -198,12 +198,9 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                         ShadowComparison.ADAPTIVE_WAIT -> Unit
                     }
                     if (adaptiveSamples.size < 12) adaptiveSamples.add(
-                        "$" + "{symbol}: $" + "{shadow.comparison}, regime=$" +
-                            "{shadow.adaptive.regime}, decision=$" +
-                            "{shadow.adaptive.decision}, reason=$" +
-                            "{shadow.adaptive.reason}"
-                    )
-                } catch (_: Exception) {
+                        "${symbol}: ${shadow.comparison}, regime=${shadow.adaptive.regime}, " +
+                            "decision=${shadow.adaptive.decision}, reason=${shadow.adaptive.reason}"
+                    )                } catch (_: Exception) {
                     adaptiveErrors++
                 }
                 when {
