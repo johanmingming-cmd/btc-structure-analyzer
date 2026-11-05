@@ -53,6 +53,7 @@ jobs:
           --tests com.btcstructureanalyzer.SignalJournalCodecTest
           --tests com.btcstructureanalyzer.AdaptivePredictionEngineTest
           --tests com.btcstructureanalyzer.AdaptiveShadowEvaluatorTest
+          --tests com.btcstructureanalyzer.AdaptivePredictionJournalTest
           --tests com.btcstructureanalyzer.TrendSetupDetectorTest
           --tests com.btcstructureanalyzer.RangeReversalDetectorTest
           --tests com.btcstructureanalyzer.SetupArbitratorTest
