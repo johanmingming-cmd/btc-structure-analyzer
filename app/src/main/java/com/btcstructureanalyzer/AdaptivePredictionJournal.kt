@@ -143,7 +143,7 @@ object AdaptivePredictionJournal {
         appendLine("record_id,decision_time_utc,symbol,reference_price,adaptive_decision,regime,reason,legacy_direction,atr_percent,volatility_expansion,efficiency_ratio,normalized_slope,setup_family,quality_score,engine_version,explanation")
         records.forEach { r ->
             appendLine(listOf(
-                csvField(r.id), csvField(java.time.Instant.ofEpochMilli(r.decisionTime).toString()),
+                csvField(r.id), csvField(java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(r.decisionTime))),
                 csvField(r.symbol), r.referencePrice.toString(), csvField(r.decision), csvField(r.regime),
                 csvField(r.reason), csvField(r.legacyDirection), r.atrPercent?.toString() ?: "",
                 r.volatilityExpansion?.toString() ?: "", r.efficiencyRatio?.toString() ?: "",
