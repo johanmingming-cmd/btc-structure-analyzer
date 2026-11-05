@@ -133,7 +133,7 @@ private fun AnalyzerApp(context: Context) {
                         val recordsForExport = SignalJournal.read(context)
                         val output = context.contentResolver.openOutputStream(uri, "w")
                             ?: throw IllegalStateException("Tidak bisa membuka file tujuan")
-                        output.use { SignalExport.writeZip(it, recordsForExport) }
+                        output.use { SignalExport.writeZip(it, recordsForExport, AdaptivePredictionJournal.read(context)) }
                     }
                     exportMessage = "Export ZIP berhasil disimpan. Jurnal lokal tidak diubah."
                 } catch (e: Exception) {
@@ -615,6 +615,10 @@ private fun AnalyzerApp(context: Context) {
                                             Text("Tren bullish: ${d.bullishTrendPairs} • bearish: ${d.bearishTrendPairs} • campuran/belum jelas: ${d.unalignedTrendPairs}", color = Muted, fontSize = 11.sp)
                                             Text("Momentum 5M lolos: ${d.momentumConfirmed} • ditolak: ${d.momentumRejected}", color = Muted, fontSize = 11.sp)
                                             Text("Ditolak: level lawan berada di rentang entry: ${d.nearbyLevelRejected}", color = Muted, fontSize = 11.sp)
+                                            Text("Adaptive: LONG ${d.adaptiveLong} • SHORT ${d.adaptiveShort} • WAIT ${d.adaptiveWait}", color = Muted, fontSize = 11.sp)
+                                            Text("Dibanding scanner lama: cocok ${d.adaptiveAgree} • berbeda ${d.adaptiveDisagree} • scanner lama WAIT ${d.adaptiveLegacyWait}", color = Muted, fontSize = 11.sp)
+                                            Text("Jurnal Adaptive: +${d.adaptiveRecordsSaved} baru • total ${d.adaptiveJournalTotal}", color = Green, fontSize = 11.sp)
+                                            d.adaptiveJournalError?.let { Text("Gagal simpan Adaptive: $it", color = Red, fontSize = 11.sp) }
                                             Text("Error data candle: ${d.dataErrors}", color = if (d.dataErrors > 0) Amber else Muted, fontSize = 11.sp)
                                             d.lastError?.let { Text("Error: $it", color = Red, fontSize = 11.sp) }
                                         }
