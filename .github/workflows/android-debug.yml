@@ -7,6 +7,7 @@ on:
     branches:
       - feature/stage1-evaluation-10m-ui-cleanup
       - implementation/prediction-lab-stage-b3-core
+      - fix/prediction-score-semantics
   push:
     branches:
       - feature/prediction-lab-signing
@@ -15,6 +16,7 @@ on:
       - feature/stage1-evaluation-10m-ui-cleanup
       - fix/prediction-lab-audit-2026
       - fix/forward-evaluation-backlog
+      - feature/adaptive-prediction-stage-b3
 
 permissions:
   contents: read
@@ -43,8 +45,17 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Run forward-test unit tests
-        run: gradle --no-daemon testDebugUnitTest --tests com.btcstructureanalyzer.CoinScannerScoreTest --tests com.btcstructureanalyzer.SignalExportTest --tests com.btcstructureanalyzer.SignalJournalCodecTest
+      - name: Run scanner and Adaptive Prediction unit tests
+        run: >-
+          gradle --no-daemon testDebugUnitTest
+          --tests com.btcstructureanalyzer.CoinScannerScoreTest
+          --tests com.btcstructureanalyzer.SignalExportTest
+          --tests com.btcstructureanalyzer.SignalJournalCodecTest
+          --tests com.btcstructureanalyzer.AdaptivePredictionEngineTest
+          --tests com.btcstructureanalyzer.AdaptiveShadowEvaluatorTest
+          --tests com.btcstructureanalyzer.TrendSetupDetectorTest
+          --tests com.btcstructureanalyzer.RangeReversalDetectorTest
+          --tests com.btcstructureanalyzer.SetupArbitratorTest
 
       - name: Restore persistent signing key
         shell: bash
