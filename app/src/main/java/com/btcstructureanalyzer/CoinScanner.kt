@@ -288,7 +288,14 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var adaptiveJournalTotal = 0
         var adaptiveJournalError: String? = null
         try {
+            val existingAdaptiveIds = AdaptivePredictionJournal.read(context).map { it.id }.toSet()
             adaptiveRecordsSaved = AdaptivePredictionJournal.record(context, adaptiveShadows)
+            val newlySavedSignals = adaptiveShadows
+                .map(AdaptivePredictionRecord::fromShadow)
+                .filter { it.id !in existingAdaptiveIds && (it.decision == "LONG" || it.decision == "SHORT") }
+            if (newlySavedSignals.isNotEmpty()) {
+                runCatching { AdaptiveSignalNotifier.notifyNewSignals(context, newlySavedSignals) }
+            }
             adaptiveJournalTotal = AdaptivePredictionJournal.read(context).size
         } catch (error: Exception) {
             adaptiveJournalError = error.message ?: "Gagal menyimpan jurnal Adaptive"
