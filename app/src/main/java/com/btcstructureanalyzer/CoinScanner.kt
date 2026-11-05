@@ -146,6 +146,9 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             }
         }.sortedByDescending { it.third }.take(40)
 
+        // Freeze the completed 1h boundary before candle requests begin. A scan that
+        // crosses an hour boundary must not treat a pre-close partial 1h candle as closed.
+        val adaptiveDecisionTime = completedHourDecisionTime(System.currentTimeMillis())
         val output = mutableListOf<ScannedCoin>()
         for ((symbol, lastPrice, quoteVolume) in candidates) {
             try {
@@ -174,7 +177,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} [$swings1h] • 15M: ${r15.trend.name} [$swings15m]")
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
-                // Shadow-only: uses the same fetched candle snapshot; never changes legacy output.
+                // Shadow-only: all three timeframes use one fixed completed-hour cutoff for this scan.
                 try {
                     val legacyDirection = when {
                         sameBullish -> AdaptiveDecision.LONG
@@ -183,11 +186,7 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     }
                     val shadow = AdaptiveShadowEvaluator.evaluate(
                         symbol, lastPrice, legacyDirection,
-                        run {
-                            // Align all timeframes to the latest completed 1h boundary.
-                            val boundary = System.currentTimeMillis() / 3_600_000L * 3_600_000L
-                            AdaptiveEngineInput(boundary + 1L, c1h, c15, c5)
-                        }
+                        AdaptiveEngineInput(adaptiveDecisionTime, c1h, c15, c5)
                     )
                     adaptiveEvaluated++
                     when (shadow.adaptive.decision) {
@@ -398,4 +397,11 @@ internal fun calculateCandidateRankingScore(
         ?.let { (it / 1.0 * 5.0).coerceIn(0.0, 5.0) } ?: 2.5
     return (50.0 + liquidityScore + momentumScore + volumeExpansionScore + roomScore)
         .toInt().coerceIn(50, 100)
+}
+
+
+/** Decision cutoff for a shadow evaluation: one millisecond after the latest completed UTC hour. */
+internal fun completedHourDecisionTime(nowMillis: Long): Long {
+    require(nowMillis > 0L) { "Current time must be positive" }
+    return nowMillis / 3_600_000L * 3_600_000L + 1L
 }
