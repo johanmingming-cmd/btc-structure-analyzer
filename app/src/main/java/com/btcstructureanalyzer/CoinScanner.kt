@@ -43,6 +43,15 @@ data class ScanDiagnostics(
     val fifteenMinuteSideways: Int = 0,
     val fifteenMinuteUnconfirmed: Int = 0,
     val candidateTrendDetails: List<String> = emptyList(),
+    val adaptiveEvaluated: Int = 0,
+    val adaptiveLong: Int = 0,
+    val adaptiveShort: Int = 0,
+    val adaptiveWait: Int = 0,
+    val adaptiveAgree: Int = 0,
+    val adaptiveDisagree: Int = 0,
+    val adaptiveLegacyWait: Int = 0,
+    val adaptiveErrors: Int = 0,
+    val adaptiveSamples: List<String> = emptyList(),
     val lastError: String? = null
 )
 
@@ -98,6 +107,15 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var fifteenMinuteSideways = 0
         var fifteenMinuteUnconfirmed = 0
         val candidateTrendDetails = mutableListOf<String>()
+        var adaptiveEvaluated = 0
+        var adaptiveLong = 0
+        var adaptiveShort = 0
+        var adaptiveWait = 0
+        var adaptiveAgree = 0
+        var adaptiveDisagree = 0
+        var adaptiveLegacyWait = 0
+        var adaptiveErrors = 0
+        val adaptiveSamples = mutableListOf<String>()
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -156,6 +174,38 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} [$swings1h] • 15M: ${r15.trend.name} [$swings15m]")
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
+                // Shadow-only: uses the same fetched candle snapshot; never changes legacy output.
+                try {
+                    val legacyDirection = when {
+                        sameBullish -> AdaptiveDecision.LONG
+                        sameBearish -> AdaptiveDecision.SHORT
+                        else -> AdaptiveDecision.WAIT
+                    }
+                    val shadow = AdaptiveShadowEvaluator.evaluate(
+                        symbol, lastPrice, legacyDirection,
+                        AdaptiveEngineInput(System.currentTimeMillis(), c1h, c15, c5)
+                    )
+                    adaptiveEvaluated++
+                    when (shadow.adaptive.decision) {
+                        AdaptiveDecision.LONG -> adaptiveLong++
+                        AdaptiveDecision.SHORT -> adaptiveShort++
+                        AdaptiveDecision.WAIT -> adaptiveWait++
+                    }
+                    when (shadow.comparison) {
+                        ShadowComparison.AGREE -> adaptiveAgree++
+                        ShadowComparison.DISAGREE -> adaptiveDisagree++
+                        ShadowComparison.LEGACY_WAIT -> adaptiveLegacyWait++
+                        ShadowComparison.ADAPTIVE_WAIT -> Unit
+                    }
+                    if (adaptiveSamples.size < 12) adaptiveSamples.add(
+                        "$" + "{symbol}: $" + "{shadow.comparison}, regime=$" +
+                            "{shadow.adaptive.regime}, decision=$" +
+                            "{shadow.adaptive.decision}, reason=$" +
+                            "{shadow.adaptive.reason}"
+                    )
+                } catch (_: Exception) {
+                    adaptiveErrors++
+                }
                 when {
                     sameBullish -> bullishTrendPairs++
                     sameBearish -> bearishTrendPairs++
@@ -249,7 +299,16 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             fifteenMinuteBearish = fifteenMinuteBearish,
             fifteenMinuteSideways = fifteenMinuteSideways,
             fifteenMinuteUnconfirmed = fifteenMinuteUnconfirmed,
-            candidateTrendDetails = candidateTrendDetails.toList()
+            candidateTrendDetails = candidateTrendDetails.toList(),
+            adaptiveEvaluated = adaptiveEvaluated,
+            adaptiveLong = adaptiveLong,
+            adaptiveShort = adaptiveShort,
+            adaptiveWait = adaptiveWait,
+            adaptiveAgree = adaptiveAgree,
+            adaptiveDisagree = adaptiveDisagree,
+            adaptiveLegacyWait = adaptiveLegacyWait,
+            adaptiveErrors = adaptiveErrors,
+            adaptiveSamples = adaptiveSamples.toList()
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
