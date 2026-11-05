@@ -5,6 +5,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - design/prediction-lab-stage-b2
+  push:
+    branches:
+      - feature/adaptive-prediction-stage-b3
 permissions:
   contents: read
 jobs:
