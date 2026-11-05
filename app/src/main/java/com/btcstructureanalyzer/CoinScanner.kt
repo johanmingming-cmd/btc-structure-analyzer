@@ -183,7 +183,11 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                     }
                     val shadow = AdaptiveShadowEvaluator.evaluate(
                         symbol, lastPrice, legacyDirection,
-                        AdaptiveEngineInput(System.currentTimeMillis(), c1h, c15, c5)
+                        run {
+                            // Align all timeframes to the latest completed 1h boundary.
+                            val boundary = System.currentTimeMillis() / 3_600_000L * 3_600_000L
+                            AdaptiveEngineInput(boundary + 1L, c1h, c15, c5)
+                        }
                     )
                     adaptiveEvaluated++
                     when (shadow.adaptive.decision) {
