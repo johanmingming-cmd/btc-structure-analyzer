@@ -379,7 +379,21 @@ private fun AnalyzerApp(context: Context) {
                                     Text("Persentase dihitung dari seluruh keputusan WAIT", color = Muted, fontSize = 9.sp)
                                     waitBreakdown.forEach { entry ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(entry.key, color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                            val code = entry.key.substringAfterLast(": ").removeSuffix(".")
+                                            val label = when (code) {
+                                                "RANGE_WAIT_NO_BOUNDARY_REJECTION", "NO_BOUNDARY_REJECTION" -> "Data lama: rejection range belum terklasifikasi"
+                                                "NO_BOUNDARY_SWEEP" -> "Tidak ada sweep pada batas range"
+                                                "SWEEP_EXCEEDS_TOLERANCE" -> "Sweep terlalu dalam"
+                                                "BOUNDARY_NOT_RECLAIMED" -> "Harga gagal kembali ke range"
+                                                "WEAK_REJECTION_WICK" -> "Wick penolakan terlalu lemah"
+                                                "SMALL_REJECTION_BODY" -> "Body candle terlalu kecil"
+                                                "AMBIGUOUS_BOUNDARY_REJECTION" -> "Rejection batas ambigu"
+                                                "LOW_REJECTION_VOLUME" -> "Volume rejection terlalu rendah"
+                                                "NO_5M_CONFIRMATION" -> "Belum ada konfirmasi candle 5M"
+                                                "INSUFFICIENT_DATA" -> "Data candle belum cukup/valid"
+                                                else -> code
+                                            }
+                                            Text(label, color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                                             val percent = if (waitCountTotal > 0) entry.value * 100.0 / waitCountTotal else 0.0
                                             Text("${entry.value} • ${String.format(Locale.US, "%.1f%%", percent)}", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
