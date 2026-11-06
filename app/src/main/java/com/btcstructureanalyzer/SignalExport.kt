@@ -14,13 +14,19 @@ import java.util.zip.ZipOutputStream
 object SignalExport {
     private data class Horizon(val minutes: Int, val price: Double?, val result: String, val evaluationTime: Long?, val priceSource: String?)
 
-    fun writeZip(output: OutputStream, records: List<SignalRecord>) {
+    fun writeZip(
+        output: OutputStream,
+        records: List<SignalRecord>,
+        adaptiveRecords: List<AdaptivePredictionRecord> = emptyList()
+    ) {
         ZipOutputStream(output.buffered()).use { zip ->
             val exportedAt = System.currentTimeMillis()
             putText(zip, "signals.csv", signalsCsv(records))
             putText(zip, "evaluations.csv", evaluationsCsv(records))
             putText(zip, "signal-analysis.json", analysisJson(records, exportedAt).toString(2))
-            putText(zip, "README.txt", readme(records.size, exportedAt))
+            putText(zip, "adaptive-predictions.csv", AdaptivePredictionJournal.csv(adaptiveRecords))
+            putText(zip, "adaptive-predictions.json", adaptiveJson(adaptiveRecords, exportedAt).toString(2))
+            putText(zip, "README.txt", readme(records.size, adaptiveRecords.size, exportedAt))
             zip.finish()
         }
     }
@@ -138,22 +144,62 @@ object SignalExport {
             .put("signals", signals)
     }
 
-    private fun readme(count: Int, exportedAt: Long) = """
+    private fun adaptiveJson(records: List<AdaptivePredictionRecord>, exportedAt: Long): JSONObject {
+        val rows = JSONArray()
+        records.forEach { r ->
+            rows.put(JSONObject()
+                .put("record_id", r.id)
+                .put("decision_time_utc", isoUtc(r.decisionTime))
+                .put("decision_time_epoch_ms", r.decisionTime)
+                .put("symbol", r.symbol)
+                .put("reference_price", r.referencePrice)
+                .put("adaptive_decision", r.decision)
+                .put("regime", r.regime)
+                .put("reason", r.reason)
+                .put("legacy_direction", r.legacyDirection)
+                .put("atr_percent", r.atrPercent ?: JSONObject.NULL)
+                .put("volatility_expansion", r.volatilityExpansion ?: JSONObject.NULL)
+                .put("efficiency_ratio", r.efficiencyRatio ?: JSONObject.NULL)
+                .put("normalized_slope", r.normalizedSlope ?: JSONObject.NULL)
+                .put("setup_family", r.setupFamily)
+                .put("quality_score", r.qualityScore)
+                .put("engine_version", r.engineVersion)
+                .put("explanation", r.explanation))
+        }
+        return JSONObject()
+            .put("schema_version", "1.0")
+            .put("export_time_utc", isoUtc(exportedAt))
+            .put("timezone", "UTC")
+            .put("record_count", records.size)
+            .put("source", "LOCAL_ADAPTIVE_PREDICTION_SHADOW_JOURNAL")
+            .put("limitations", JSONArray(listOf(
+                "These are shadow predictions and do not control published scanner signals.",
+                "Reference prices are the Binance Spot ticker prices captured during scan, not guaranteed executable prices.",
+                "Outcome evaluation is intentionally deferred until the collected live dataset is reviewed."
+            )))
+            .put("predictions", rows)
+    }
+
+    private fun readme(count: Int, adaptiveCount: Int, exportedAt: Long) = """
 BTC STRUCTURE ANALYZER - EXPORT DATA
 Schema version: 1.0
 Export time (UTC): ${isoUtc(exportedAt)}
 Exported signal count: $count
+Exported Adaptive Prediction decision count: $adaptiveCount
 Cohort metadata: LEGACY records predate prospective cohort tracking; PROSPECTIVE_V1 records were captured after prospective tracking was added. Filter by cohort for new-sample analysis.
 
 FILES
 - signals.csv: one row per stored signal.
 - evaluations.csv: one row per signal and horizon (10, 15, 30, 60 minutes, 3 hours, 6 hours).
 - signal-analysis.json: structured archive including limitations and derived fields.
+- adaptive-predictions.csv: one row per saved Adaptive Prediction decision, including WAIT decisions.
+- adaptive-predictions.json: structured Adaptive Prediction archive with regime metrics and explanations.
 - README.txt: this documentation.
 
 DATA SAFETY
-This export reads the local signal journal and does not write to or delete it.
+This export reads the local signal journal and Adaptive Prediction journal; it does not write to or delete either journal.
 The ZIP contains no API keys or credentials.
+Adaptive predictions are deduplicated by symbol and completed-hour decision timestamp. The local journal retains up to 10,000 records.
 
 TIME FIELDS
 signal_time_utc is the stored signal creation time.

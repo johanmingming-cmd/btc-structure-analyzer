@@ -133,7 +133,7 @@ private fun AnalyzerApp(context: Context) {
                         val recordsForExport = SignalJournal.read(context)
                         val output = context.contentResolver.openOutputStream(uri, "w")
                             ?: throw IllegalStateException("Tidak bisa membuka file tujuan")
-                        output.use { SignalExport.writeZip(it, recordsForExport) }
+                        output.use { SignalExport.writeZip(it, recordsForExport, AdaptivePredictionJournal.read(context)) }
                     }
                     exportMessage = "Export ZIP berhasil disimpan. Jurnal lokal tidak diubah."
                 } catch (e: Exception) {
@@ -150,6 +150,10 @@ private fun AnalyzerApp(context: Context) {
     var scannedCoins by remember { mutableStateOf(emptyList<ScannedCoin>()) }
     var scanCompleted by remember { mutableStateOf(false) }
     var scanCompletedAt by remember { mutableStateOf<Long?>(null) }
+    var adaptiveRecords by remember { mutableStateOf(emptyList<AdaptivePredictionRecord>()) }
+    var adaptiveJournalError by remember { mutableStateOf<String?>(null) }
+    var adaptiveOutcomeSummary by remember { mutableStateOf(emptyList<AdaptiveHorizonSummary>()) }
+    var adaptiveOutcomeError by remember { mutableStateOf<String?>(null) }
 
     fun loadHistory() {
         val raw = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getString("history", "") ?: ""
@@ -213,6 +217,25 @@ private fun AnalyzerApp(context: Context) {
                 evalPending = scanPrefs.getInt("forward_eval_pending", SignalJournal.pendingEvaluations(context).size)
                 evalLastError = scanPrefs.getString("forward_eval_last_error", null)
                 delay(2000)
+            }
+        }
+    }
+    LaunchedEffect(selected) {
+        if (selected == "Home") {
+            while (true) {
+                try {
+                    val records = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }
+                    adaptiveRecords = records
+                    adaptiveJournalError = null
+                    adaptiveOutcomeSummary = withContext(Dispatchers.IO) {
+                        AdaptiveOutcomeEvaluator.evaluateDue(context, repo, records)
+                    }
+                    adaptiveOutcomeError = null
+                } catch (e: Exception) {
+                    adaptiveOutcomeError = e.message ?: "Evaluasi hasil Adaptive gagal"
+                    if (adaptiveRecords.isEmpty()) adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca"
+                }
+                delay(3000)
             }
         }
     }
@@ -281,88 +304,186 @@ private fun AnalyzerApp(context: Context) {
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
             when (selected) {
                 "Home" -> {
+                    val longCount = adaptiveRecords.count { it.decision == "LONG" }
+                    val shortCount = adaptiveRecords.count { it.decision == "SHORT" }
+                    val waitCount = adaptiveRecords.count { it.decision == "WAIT" }
+                    val latest = adaptiveRecords.firstOrNull()
                     item {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("MARKET OVERVIEW", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.4.sp)
-                            Text("Market Opportunity Dashboard", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                            Text("Struktur harga multi-timeframe", color = Muted, fontSize = 12.sp)
+                        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text("ADAPTIVE PREDICTION LAB", color = Green, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                            Text("Dashboard Analisis Adaptive", color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Keputusan mesin baru • data jurnal lokal • diperbarui otomatis", color = Muted, fontSize = 11.sp)
                         }
                     }
-                    item { PriceCard(price, loading, error, lastRefresh) }
-                    if (error != null) item { ErrorCard(error!!) }
                     item {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            listOf("1h", "15m", "5m").forEach { tf ->
-                                val result = results[tf]
-                                Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel),
-                                    shape = RoundedCornerShape(16.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF20374B))) {
-                                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(tf.uppercase(), color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Icon(when(result?.trend) {
-                                            Trend.BULLISH -> Icons.Default.TrendingUp
-                                            Trend.BEARISH -> Icons.Default.TrendingDown
-                                            else -> Icons.Default.Timeline
-                                        }, null, tint = trendColor(result?.trend), modifier = Modifier.size(23.dp))
-                                        Text(trendLabel(result?.trend), color = trendColor(result?.trend), fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                                        Text(result?.swings?.takeLast(2)?.joinToString(" / ") { it.label } ?: "Belum ada swing",
-                                            color = Color.White, fontSize = 10.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2032)), shape = RoundedCornerShape(18.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Green.copy(alpha = .5f))) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.AutoGraph, null, tint = Green)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("STATUS MESIN ADAPTIVE", color = Green, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("SHADOW MODE", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Text("Adaptive menganalisis secara independen. Sinyal utama aplikasi lama belum digantikan.", color = Color.White, fontSize = 12.sp)
+                                Text("Mesin: ${latest?.engineVersion ?: "menunggu keputusan pertama"}", color = Muted, fontSize = 10.sp)
+                                adaptiveJournalError?.let { Text("Kesalahan jurnal: $it", color = Red, fontSize = 11.sp) }
+                            }
+                        }
+                    }
+                    item {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(Triple("LONG", longCount, Green), Triple("SHORT", shortCount, Red), Triple("WAIT", waitCount, Amber)).forEach { (label, count, tint) ->
+                                Card(Modifier.weight(1f), colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(13.dp), border = androidx.compose.foundation.BorderStroke(1.dp, tint.copy(alpha = .45f))) {
+                                    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                        Text(count.toString(), color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
                                     }
                                 }
                             }
                         }
                     }
                     item {
-                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF0D2032)),
-                            shape = RoundedCornerShape(20.dp), border = androidx.compose.foundation.BorderStroke(1.dp, Blue.copy(alpha = .45f))) {
-                            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.AccountTree, null, tint = Blue)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("STRUKTUR UTAMA • 1H", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = .8.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(15.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Text("RINGKASAN JURNAL ADAPTIVE", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Total keputusan tersimpan", color = Muted, fontSize = 11.sp)
+                                    Text(adaptiveRecords.size.toString(), color = Color.White, fontWeight = FontWeight.Bold)
                                 }
-                                Text(trendLabel(results["1h"]?.trend), color = trendColor(results["1h"]?.trend), fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-                                Text(results["1h"]?.summary ?: "Menunggu struktur candle terkonfirmasi",
-                                    color = Color.White, fontSize = 13.sp)
-                                Divider(color = Color(0xFF254057))
-                                Text("Interpretasi multi-timeframe", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text(when {
-                                    results.isEmpty() -> "Data belum tersedia. Perbarui data untuk membaca struktur."
-                                    else -> "1H menentukan bias utama • 15M memberi konteks • 5M menunjukkan pergerakan jangka pendek."
-                                }, color = Muted, fontSize = 12.sp)
-                                PredictionSummary(candles, results)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Kandidat terakhir diproses", color = Muted, fontSize = 11.sp)
+                                    Text(latest?.symbol ?: "Belum ada", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Waktu keputusan terakhir", color = Muted, fontSize = 11.sp)
+                                    Text(latest?.let { SimpleDateFormat("dd MMM HH:mm:ss", Locale("id", "ID")).format(Date(it.decisionTime)) } ?: "—", color = Color.White, fontSize = 11.sp)
+                                }
+                                latest?.let {
+                                    Divider(color = Color(0xFF24364A))
+                                    Text("Harga referensi: ${String.format(Locale.US, "%.8f", it.referencePrice)}", color = Color.White, fontSize = 12.sp)
+                                    Text("Regime: ${it.regime} • Setup: ${it.setupFamily}", color = Muted, fontSize = 11.sp)
+                                    Text("Alasan: ${it.reason}", color = Muted, fontSize = 11.sp)
+                                }
+                                val waitCountTotal = adaptiveRecords.count { it.decision == "WAIT" }
+                                val waitBreakdown = adaptiveRecords
+                                    .filter { it.decision == "WAIT" }
+                                    .groupingBy { record ->
+                                        record.explanation.substringBefore(" |").substringBefore(".")
+                                    }
+                                    .eachCount()
+                                    .entries
+                                    .sortedByDescending { it.value }
+                                    .take(5)
+                                if (waitBreakdown.isNotEmpty()) {
+                                    Divider(color = Color(0xFF24364A))
+                                    Text("DIAGNOSTIK PENYEBAB WAIT", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("Persentase dihitung dari seluruh keputusan WAIT", color = Muted, fontSize = 9.sp)
+                                    waitBreakdown.forEach { entry ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            val code = entry.key.substringAfterLast(": ").removePrefix("RANGE_WAIT_").removeSuffix(".")
+                                            val label = when (code) {
+                                                "RANGE_WAIT_NO_BOUNDARY_REJECTION", "NO_BOUNDARY_REJECTION" -> "Data lama: rejection range belum terklasifikasi"
+                                                "NO_BOUNDARY_SWEEP" -> "Tidak ada sweep pada batas range"
+                                                "SWEEP_EXCEEDS_TOLERANCE" -> "Sweep terlalu dalam"
+                                                "BOUNDARY_NOT_RECLAIMED" -> "Harga gagal kembali ke range"
+                                                "WEAK_REJECTION_WICK" -> "Wick penolakan terlalu lemah"
+                                                "SMALL_REJECTION_BODY" -> "Body candle terlalu kecil"
+                                                "AMBIGUOUS_BOUNDARY_REJECTION" -> "Rejection batas ambigu"
+                                                "LOW_REJECTION_VOLUME" -> "Volume rejection terlalu rendah"
+                                                "NO_5M_CONFIRMATION" -> "Belum ada konfirmasi candle 5M"
+                                                "INSUFFICIENT_DATA" -> "Data candle belum cukup/valid"
+                                                else -> code
+                                            }
+                                            Text(label, color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                            val percent = if (waitCountTotal > 0) entry.value * 100.0 / waitCountTotal else 0.0
+                                            Text("${entry.value} • ${String.format(Locale.US, "%.1f%%", percent)}", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                Divider(color = Color(0xFF24364A))
+                                Text("EVALUASI HASIL PREDIKSI", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Harga penutupan Binance Spot setelah keputusan • tanpa TP/SL", color = Muted, fontSize = 9.sp)
+                                adaptiveOutcomeSummary.forEach { item ->
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("${item.horizonHours}H", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            Text("Sampel matang: ${item.evaluated}/${item.eligible} • Pending: ${item.pending}", color = Muted, fontSize = 9.sp)
+                                        }
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Benar ${item.hits} • Salah ${item.misses} • Netral ${item.neutral}", color = Muted, fontSize = 9.sp)
+                                            Text("Hit rate: ${item.hitRatePercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"}", color = Green, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Text("Coverage evaluasi: ${item.coveragePercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"}", color = Muted, fontSize = 9.sp)
+                                    }
+                                }
+                                if (adaptiveOutcomeSummary.isEmpty()) Text("Belum ada ringkasan evaluasi.", color = Muted, fontSize = 9.sp)
+                                Text("Netral = perubahan arah maksimal 0,05%. WAIT tidak dihitung sebagai prediksi. Hasil memakai close candle 1 menit terdekat sebelum target horizon.", color = Muted, fontSize = 9.sp)
+                                adaptiveOutcomeError?.let { Text("Evaluasi: $it", color = Amber, fontSize = 9.sp) }
+                                if (adaptiveRecords.isEmpty() && adaptiveJournalError == null) Text("Belum ada keputusan Adaptive tersimpan. Jalankan pemindaian dari tab Analisis.", color = Amber, fontSize = 11.sp)
                             }
                         }
                     }
                     item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("PRICE STRUCTURE", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                                Text("BTC/USDT • 5 MINUTES", color = Muted, fontSize = 10.sp)
+                                Text("HASIL ANALISIS ADAPTIVE", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Keputusan terbaru tersimpan, termasuk WAIT", color = Muted, fontSize = 10.sp)
                             }
-                            TextButton(onClick = { timeframe = "5m"; selected = "Chart" }) { Text("BUKA CHART  →", color = Blue, fontSize = 11.sp) }
-                        }
-                    }
-                    item { CandleChart(candles["5m"].orEmpty(), results["5m"]) }
-                    item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            OutlinedButton(onClick = { selected = "Detail Struktur" }, modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.AccountTree, null); Spacer(Modifier.width(6.dp)); Text("Detail Struktur") }
-                            OutlinedButton(onClick = { selected = "Level Kunci" }, modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Layers, null); Spacer(Modifier.width(6.dp)); Text("Level Kunci") }
-                        }
-                    }
-                    item {
-                        Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
-                            Row(Modifier.fillMaxWidth().clickable { selected = "Notifikasi" }.padding(15.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.NotificationsActive, null, tint = Amber)
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text("Pusat Notifikasi", color = Color.White, fontWeight = FontWeight.Bold)
-                                    Text("Lihat ringkasan kondisi struktur", color = Muted, fontSize = 11.sp)
+                            TextButton(onClick = {
+                                scope.launch {
+                                    try {
+                                        val records = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }
+                                        adaptiveRecords = records
+                                        adaptiveJournalError = null
+                                        adaptiveOutcomeSummary = withContext(Dispatchers.IO) {
+                                            AdaptiveOutcomeEvaluator.evaluateDue(context, repo, records)
+                                        }
+                                        adaptiveOutcomeError = null
+                                    } catch (e: Exception) {
+                                        adaptiveOutcomeError = e.message ?: "Evaluasi hasil Adaptive gagal"
+                                        if (adaptiveRecords.isEmpty()) adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca"
+                                    }
                                 }
-                                Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                            }) { Text("REFRESH", color = Green, fontSize = 10.sp) }
+                        }
+                    }
+                    if (adaptiveRecords.isNotEmpty()) {
+                        items(adaptiveRecords.take(50), key = { it.id }) { record ->
+                            val decisionColor = when (record.decision) { "LONG" -> Green; "SHORT" -> Red; else -> Amber }
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp), border = androidx.compose.foundation.BorderStroke(1.dp, decisionColor.copy(alpha = .35f))) {
+                                Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(record.symbol, color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                                        Spacer(Modifier.weight(1f))
+                                        Text(record.decision, color = decisionColor, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                                    }
+                                    Text(SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale("id", "ID")).format(Date(record.decisionTime)), color = Muted, fontSize = 10.sp)
+                                    Text("Regime: ${record.regime} • Setup: ${record.setupFamily} • Kualitas: ${record.qualityScore}/100", color = Color.White, fontSize = 11.sp)
+                                    Text("Harga referensi: $${String.format(Locale.US, "%.8f", record.referencePrice)}", color = Muted, fontSize = 11.sp)
+                                    Text("ATR: ${record.atrPercent?.let { String.format(Locale.US, "%.4f%%", it) } ?: "—"} • Ekspansi: ${record.volatilityExpansion?.let { String.format(Locale.US, "%.3f", it) } ?: "—"}", color = Muted, fontSize = 10.sp)
+                                    Text("Efficiency: ${record.efficiencyRatio?.let { String.format(Locale.US, "%.3f", it) } ?: "—"} • Slope ATR: ${record.normalizedSlope?.let { String.format(Locale.US, "%.3f", it) } ?: "—"}", color = Muted, fontSize = 10.sp)
+                                    Text("Pembanding scanner lama: ${record.legacyDirection}", color = Muted, fontSize = 10.sp)
+                                    Text("Alasan: ${record.reason}", color = Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(record.explanation, color = Color.White, fontSize = 11.sp)
+                                    Text("Engine ${record.engineVersion}", color = Muted, fontSize = 9.sp)
+                                }
                             }
+                        }
+                    } else if (adaptiveJournalError != null) {
+                        item { ErrorCard(adaptiveJournalError!!) }
+                    }
+                    item {
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF142538)), shape = RoundedCornerShape(14.dp)) {
+                            Column(Modifier.fillMaxWidth().padding(13.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                Text("CATATAN EVALUASI", color = Blue, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
+                                Text("Dashboard ini menampilkan keputusan dan metrik saat keputusan dibuat. Akurasi hasil Adaptive belum dihitung di layar ini; evaluasi harga aktual per horizon 1H/3H/6H akan menjadi tahap berikutnya.", color = Muted, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                    item {
+                        OutlinedButton(onClick = { selected = "Analisis" }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+                            Text("BUKA PEMINDAIAN MARKET", color = Blue)
                         }
                     }
                 }
@@ -615,6 +736,10 @@ private fun AnalyzerApp(context: Context) {
                                             Text("Tren bullish: ${d.bullishTrendPairs} • bearish: ${d.bearishTrendPairs} • campuran/belum jelas: ${d.unalignedTrendPairs}", color = Muted, fontSize = 11.sp)
                                             Text("Momentum 5M lolos: ${d.momentumConfirmed} • ditolak: ${d.momentumRejected}", color = Muted, fontSize = 11.sp)
                                             Text("Ditolak: level lawan berada di rentang entry: ${d.nearbyLevelRejected}", color = Muted, fontSize = 11.sp)
+                                            Text("Adaptive: LONG ${d.adaptiveLong} • SHORT ${d.adaptiveShort} • WAIT ${d.adaptiveWait}", color = Muted, fontSize = 11.sp)
+                                            Text("Dibanding scanner lama: cocok ${d.adaptiveAgree} • berbeda ${d.adaptiveDisagree} • scanner lama WAIT ${d.adaptiveLegacyWait}", color = Muted, fontSize = 11.sp)
+                                            Text("Jurnal Adaptive: +${d.adaptiveRecordsSaved} baru • total ${d.adaptiveJournalTotal}", color = Green, fontSize = 11.sp)
+                                            d.adaptiveJournalError?.let { Text("Gagal simpan Adaptive: $it", color = Red, fontSize = 11.sp) }
                                             Text("Error data candle: ${d.dataErrors}", color = if (d.dataErrors > 0) Amber else Muted, fontSize = 11.sp)
                                             d.lastError?.let { Text("Error: $it", color = Red, fontSize = 11.sp) }
                                         }
