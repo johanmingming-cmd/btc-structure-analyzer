@@ -353,9 +353,27 @@ private fun AnalyzerApp(context: Context) {
                                 }
                                 latest?.let {
                                     Divider(color = Color(0xFF24364A))
-                                    Text("Harga referensi: $${String.format(Locale.US, "%.8f", it.referencePrice)}", color = Color.White, fontSize = 12.sp)
+                                    Text("Harga referensi: ${String.format(Locale.US, "%.8f", it.referencePrice)}", color = Color.White, fontSize = 12.sp)
                                     Text("Regime: ${it.regime} • Setup: ${it.setupFamily}", color = Muted, fontSize = 11.sp)
                                     Text("Alasan: ${it.reason}", color = Muted, fontSize = 11.sp)
+                                }
+                                val waitBreakdown = adaptiveRecords
+                                    .filter { it.decision == "WAIT" }
+                                    .groupingBy { it.explanation }
+                                    .eachCount()
+                                    .entries
+                                    .sortedByDescending { it.value }
+                                    .take(5)
+                                if (waitBreakdown.isNotEmpty()) {
+                                    Divider(color = Color(0xFF24364A))
+                                    Text("DIAGNOSTIK PENYEBAB WAIT", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("Berdasarkan seluruh jurnal tersimpan", color = Muted, fontSize = 9.sp)
+                                    waitBreakdown.forEach { entry ->
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(entry.key, color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                            Text(entry.value.toString(), color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                                 if (adaptiveRecords.isEmpty() && adaptiveJournalError == null) Text("Belum ada keputusan Adaptive tersimpan. Jalankan pemindaian dari tab Analisis.", color = Amber, fontSize = 11.sp)
                             }
