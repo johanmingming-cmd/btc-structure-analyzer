@@ -152,6 +152,8 @@ private fun AnalyzerApp(context: Context) {
     var scanCompletedAt by remember { mutableStateOf<Long?>(null) }
     var adaptiveRecords by remember { mutableStateOf(emptyList<AdaptivePredictionRecord>()) }
     var adaptiveJournalError by remember { mutableStateOf<String?>(null) }
+    var adaptiveOutcomeSummary by remember { mutableStateOf(emptyList<AdaptiveHorizonSummary>()) }
+    var adaptiveOutcomeError by remember { mutableStateOf<String?>(null) }
 
     fun loadHistory() {
         val raw = context.getSharedPreferences("btc_structure", Context.MODE_PRIVATE).getString("history", "") ?: ""
@@ -222,10 +224,16 @@ private fun AnalyzerApp(context: Context) {
         if (selected == "Home") {
             while (true) {
                 try {
-                    adaptiveRecords = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }
+                    val records = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }
+                    adaptiveRecords = records
                     adaptiveJournalError = null
+                    adaptiveOutcomeSummary = withContext(Dispatchers.IO) {
+                        AdaptiveOutcomeEvaluator.evaluateDue(context, repo, records)
+                    }
+                    adaptiveOutcomeError = null
                 } catch (e: Exception) {
-                    adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca"
+                    adaptiveOutcomeError = e.message ?: "Evaluasi hasil Adaptive gagal"
+                    if (adaptiveRecords.isEmpty()) adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca"
                 }
                 delay(3000)
             }
@@ -375,6 +383,25 @@ private fun AnalyzerApp(context: Context) {
                                         }
                                     }
                                 }
+                                Divider(color = Color(0xFF24364A))
+                                Text("EVALUASI HASIL PREDIKSI", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Harga penutupan Binance Spot setelah keputusan • tanpa TP/SL", color = Muted, fontSize = 9.sp)
+                                adaptiveOutcomeSummary.forEach { item ->
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("${item.horizonHours}H", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            Text("Sampel matang: ${item.evaluated}/${item.eligible} • Pending: ${item.pending}", color = Muted, fontSize = 9.sp)
+                                        }
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Benar ${item.hits} • Salah ${item.misses} • Netral ${item.neutral}", color = Muted, fontSize = 9.sp)
+                                            Text("Hit rate: ${item.hitRatePercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"}", color = Green, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Text("Coverage evaluasi: ${item.coveragePercent?.let { String.format(Locale.US, "%.1f%%", it) } ?: "—"}", color = Muted, fontSize = 9.sp)
+                                    }
+                                }
+                                if (adaptiveOutcomeSummary.isEmpty()) Text("Belum ada ringkasan evaluasi.", color = Muted, fontSize = 9.sp)
+                                Text("Netral = perubahan arah maksimal 0,05%. WAIT tidak dihitung sebagai prediksi. Hasil memakai close candle 1 menit terdekat sebelum target horizon.", color = Muted, fontSize = 9.sp)
+                                adaptiveOutcomeError?.let { Text("Evaluasi: $it", color = Amber, fontSize = 9.sp) }
                                 if (adaptiveRecords.isEmpty() && adaptiveJournalError == null) Text("Belum ada keputusan Adaptive tersimpan. Jalankan pemindaian dari tab Analisis.", color = Amber, fontSize = 11.sp)
                             }
                         }
@@ -387,8 +414,18 @@ private fun AnalyzerApp(context: Context) {
                             }
                             TextButton(onClick = {
                                 scope.launch {
-                                    try { adaptiveRecords = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }; adaptiveJournalError = null }
-                                    catch (e: Exception) { adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca" }
+                                    try {
+                                        val records = withContext(Dispatchers.IO) { AdaptivePredictionJournal.read(context) }
+                                        adaptiveRecords = records
+                                        adaptiveJournalError = null
+                                        adaptiveOutcomeSummary = withContext(Dispatchers.IO) {
+                                            AdaptiveOutcomeEvaluator.evaluateDue(context, repo, records)
+                                        }
+                                        adaptiveOutcomeError = null
+                                    } catch (e: Exception) {
+                                        adaptiveOutcomeError = e.message ?: "Evaluasi hasil Adaptive gagal"
+                                        if (adaptiveRecords.isEmpty()) adaptiveJournalError = e.message ?: "Jurnal Adaptive tidak dapat dibaca"
+                                    }
                                 }
                             }) { Text("REFRESH", color = Green, fontSize = 10.sp) }
                         }
