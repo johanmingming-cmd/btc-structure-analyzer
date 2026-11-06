@@ -188,8 +188,12 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                         sameBearish -> AdaptiveDecision.SHORT
                         else -> AdaptiveDecision.WAIT
                     }
+                    // Anchor every prediction to the completed 1H close at the frozen decision boundary.
+                    // Do not use the live ticker price: scans can run several minutes after that boundary.
+                    val adaptiveReferencePrice = c1h.lastOrNull { it.closeTime < adaptiveDecisionTime }?.close
+                        ?: throw IllegalStateException("Harga referensi candle 1H tertutup tidak tersedia")
                     val shadow = AdaptiveShadowEvaluator.evaluate(
-                        symbol, lastPrice, legacyDirection,
+                        symbol, adaptiveReferencePrice, legacyDirection,
                         AdaptiveEngineInput(adaptiveDecisionTime, c1h, c15, c5)
                     )
                     adaptiveShadows += shadow
