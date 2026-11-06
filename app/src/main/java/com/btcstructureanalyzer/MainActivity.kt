@@ -368,7 +368,9 @@ private fun AnalyzerApp(context: Context) {
                                 val waitCountTotal = adaptiveRecords.count { it.decision == "WAIT" }
                                 val waitBreakdown = adaptiveRecords
                                     .filter { it.decision == "WAIT" }
-                                    .groupingBy { it.explanation }
+                                    .groupingBy { record ->
+                                        record.explanation.substringBefore(" |").substringBefore(".")
+                                    }
                                     .eachCount()
                                     .entries
                                     .sortedByDescending { it.value }
