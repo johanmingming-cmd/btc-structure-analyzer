@@ -32,6 +32,22 @@ class AdaptivePredictionEngineTest {
         assertNotNull(result.atrPercent)
     }
 
+    @Test fun preservesDetailedRangeDiagnosticsInAdaptiveResult() {
+        val rangeInput = input(
+            h1 = candles(3_600_000L, trend = false),
+            m15 = candles(900_000L, trend = false),
+            m5 = candles(300_000L, trend = false)
+        )
+        val result = AdaptivePredictionEngine.evaluate(rangeInput)
+        assertEquals(AdaptiveRegime.RANGE, result.regime)
+        assertEquals(AdaptiveDecision.WAIT, result.decision)
+        assertEquals(AdaptiveReason.WAIT_NO_SETUP, result.reason)
+        assert(result.explanation.startsWith("RANGE_WAIT_NO_BOUNDARY_SWEEP |"))
+        assert(result.explanation.contains("supportSweepATR="))
+        assert(result.explanation.contains("lowerWickBody="))
+        assert(result.explanation.contains("volumeRatio="))
+    }
+
     @Test fun excludesStillOpenLatestCandle() {
         val closed = candles(3_600_000L)
         val open = Candle(decisionTime, 160.0, 161.0, 159.0, 160.5, 1000.0, decisionTime + 3_599_999L)
