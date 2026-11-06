@@ -166,6 +166,9 @@ object AdaptiveOutcomeEvaluator {
             .filter { (prediction, horizon, target) ->
                 target <= now && "${prediction.id}-${horizon}h" !in known
             }
+            // Oldest due horizons are attempted first so a large recent batch cannot
+            // permanently starve earlier predictions when the request cap is reached.
+            .sortedBy { it.third }
             .take(MAX_REQUESTS_PER_PASS)
             .toList()
 
