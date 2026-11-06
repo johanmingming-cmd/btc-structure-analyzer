@@ -27,6 +27,16 @@ data class RangeDetectionResult(
 
 /** Reversal is allowed only after a shallow boundary sweep/rejection and a separate closed 5m trigger. */
 object RangeReversalDetector {
+    private data class BoundaryCheck(
+        val swept: Boolean,
+        val withinTolerance: Boolean,
+        val reclaimed: Boolean,
+        val wickStrong: Boolean
+    ) {
+        fun accepted(bodyStrong: Boolean) =
+            swept && withinTolerance && reclaimed && wickStrong && bodyStrong
+    }
+
     fun detect(
         regime: AdaptiveRegime,
         candles15m: List<Candle>,
@@ -58,12 +68,6 @@ object RangeReversalDetector {
         val maxSweep = atr15 * config.boundaryAtrTolerance
 
         val bodyStrong = abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        data class BoundaryCheck(
-            val swept: Boolean,
-            val withinTolerance: Boolean,
-            val reclaimed: Boolean,
-            val wickStrong: Boolean
-        )
         val supportCheck = BoundaryCheck(
             swept = last.low < support,
             withinTolerance = last.low < support && support - last.low <= maxSweep,
@@ -76,10 +80,8 @@ object RangeReversalDetector {
             reclaimed = last.high > resistance && last.close < resistance,
             wickStrong = upperWick / body >= config.minimumWickBodyRatio
         )
-        fun BoundaryCheck.accepted() = swept && withinTolerance && reclaimed && wickStrong && bodyStrong
-
-        val supportReject = supportCheck.accepted()
-        val resistanceReject = resistanceCheck.accepted()
+        val supportReject = supportCheck.accepted(bodyStrong)
+        val resistanceReject = resistanceCheck.accepted(bodyStrong)
         if (supportReject && resistanceReject)
             return wait(RangeWaitReason.AMBIGUOUS_BOUNDARY_REJECTION)
         if (!supportReject && !resistanceReject) {
