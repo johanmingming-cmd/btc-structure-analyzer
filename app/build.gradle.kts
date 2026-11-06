@@ -12,8 +12,8 @@ android {
         applicationId = "com.predictionlab.analyzer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.5.8-adaptive-notifications"
+        versionCode = 24
+        versionName = "1.5.9-wait-diagnostics"
     }
     signingConfigs {
         create("release") {
