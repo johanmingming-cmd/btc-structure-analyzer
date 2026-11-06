@@ -381,7 +381,7 @@ private fun AnalyzerApp(context: Context) {
                                     Text("Persentase dihitung dari seluruh keputusan WAIT", color = Muted, fontSize = 9.sp)
                                     waitBreakdown.forEach { entry ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            val code = entry.key.substringAfterLast(": ").removeSuffix(".")
+                                            val code = entry.key.substringAfterLast(": ").removePrefix("RANGE_WAIT_").removeSuffix(".")
                                             val label = when (code) {
                                                 "RANGE_WAIT_NO_BOUNDARY_REJECTION", "NO_BOUNDARY_REJECTION" -> "Data lama: rejection range belum terklasifikasi"
                                                 "NO_BOUNDARY_SWEEP" -> "Tidak ada sweep pada batas range"
