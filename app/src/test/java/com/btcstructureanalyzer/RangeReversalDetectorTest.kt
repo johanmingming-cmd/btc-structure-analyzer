@@ -23,6 +23,8 @@ class RangeReversalDetectorTest {
             SetupStatus.CONFIRMED, result.status)
         assertEquals(RangeSetupFamily.RANGE_SUPPORT_REJECTION, result.family)
         assertEquals(AdaptiveDecision.LONG, result.direction)
+        assert(result.explanation.contains("triggerBodyATR="))
+        assert(result.explanation.contains("triggerBreakoutATR="))
     }
 
     @Test fun rejectsDeepBoundaryBreakInsteadOfCallingItRejection() {
@@ -37,6 +39,10 @@ class RangeReversalDetectorTest {
         val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, base15(), base5())
         assertEquals(SetupStatus.WAIT, result.status)
         assertEquals(RangeWaitReason.NO_BOUNDARY_SWEEP, result.waitReason)
+        assert(result.explanation.startsWith("RANGE_WAIT_NO_BOUNDARY_SWEEP |"))
+        assert(result.explanation.contains("supportSweepATR="))
+        assert(result.explanation.contains("lowerWickBody="))
+        assert(result.explanation.contains("volumeRatio="))
     }
 
     @Test fun reportsMissingFiveMinuteTriggerSeparately() {
