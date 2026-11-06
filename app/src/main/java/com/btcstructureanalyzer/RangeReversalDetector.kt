@@ -66,6 +66,14 @@ object RangeReversalDetector {
         val avgVolume = prior.takeLast(min(10, prior.size)).map { it.volume }.average()
         val volumeRatio = if (avgVolume > 0.0) last.volume / avgVolume else 0.0
         val maxSweep = atr15 * config.boundaryAtrTolerance
+        val supportSweepAtr = (support - last.low) / atr15
+        val resistanceSweepAtr = (last.high - resistance) / atr15
+        val lowerWickRatio = lowerWick / body
+        val upperWickRatio = upperWick / body
+        val bodyAtr = abs(last.close - last.open) / atr15
+        val supportDistanceAtr = (last.close - support) / atr15
+        val resistanceDistanceAtr = (resistance - last.close) / atr15
+        val diagnostics = "supportSweepATR=${fmt(supportSweepAtr)}; resistanceSweepATR=${fmt(resistanceSweepAtr)}; supportReclaimATR=${fmt(supportDistanceAtr)}; resistanceReclaimATR=${fmt(resistanceDistanceAtr)}; lowerWickBody=${fmt(lowerWickRatio)}; upperWickBody=${fmt(upperWickRatio)}; bodyATR=${fmt(bodyAtr)}; volumeRatio=${fmt(volumeRatio)}; maxSweepATR=${fmt(config.boundaryAtrTolerance)}"
 
         val bodyStrong = abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
         val supportCheck = BoundaryCheck(
@@ -83,7 +91,7 @@ object RangeReversalDetector {
         val supportReject = supportCheck.accepted(bodyStrong)
         val resistanceReject = resistanceCheck.accepted(bodyStrong)
         if (supportReject && resistanceReject)
-            return wait(RangeWaitReason.AMBIGUOUS_BOUNDARY_REJECTION)
+            return wait(RangeWaitReason.AMBIGUOUS_BOUNDARY_REJECTION, diagnostics)
         if (!supportReject && !resistanceReject) {
             val swept = listOf(supportCheck, resistanceCheck).filter { it.swept }
             val reason = when {
@@ -93,10 +101,10 @@ object RangeReversalDetector {
                 swept.filter { it.withinTolerance && it.reclaimed }.none { it.wickStrong } -> RangeWaitReason.WEAK_REJECTION_WICK
                 else -> RangeWaitReason.SMALL_REJECTION_BODY
             }
-            return wait(reason)
+            return wait(reason, diagnostics)
         }
         if (volumeRatio < config.minimumVolumeRatio)
-            return wait(RangeWaitReason.LOW_REJECTION_VOLUME)
+            return wait(RangeWaitReason.LOW_REJECTION_VOLUME, diagnostics)
 
         val direction = if (supportReject) AdaptiveDecision.LONG else AdaptiveDecision.SHORT
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(RangeWaitReason.INSUFFICIENT_DATA)
@@ -105,8 +113,13 @@ object RangeReversalDetector {
         val trigger = if (direction == AdaptiveDecision.LONG)
             last5.close > triggerBars.maxOf { it.high } && last5.close > last5.open
         else last5.close < triggerBars.minOf { it.low } && last5.close < last5.open
-        if (!trigger || abs(last5.close - last5.open) < atr5 * config.minimumBodyAtr)
-            return wait(RangeWaitReason.NO_5M_CONFIRMATION)
+        val triggerBodyAtr = abs(last5.close - last5.open) / atr5
+        val triggerBreakoutAtr = if (direction == AdaptiveDecision.LONG)
+            (last5.close - triggerBars.maxOf { it.high }) / atr5
+        else (triggerBars.minOf { it.low } - last5.close) / atr5
+        val triggerDiagnostics = "${diagnostics}; trigger5m=${trigger}; triggerBodyATR=${fmt(triggerBodyAtr)}; triggerBreakoutATR=${fmt(triggerBreakoutAtr)}"
+        if (!trigger || triggerBodyAtr < config.minimumBodyAtr)
+            return wait(RangeWaitReason.NO_5M_CONFIRMATION, triggerDiagnostics)
 
         val family = if (supportReject) RangeSetupFamily.RANGE_SUPPORT_REJECTION
             else RangeSetupFamily.RANGE_RESISTANCE_REJECTION
@@ -115,14 +128,17 @@ object RangeReversalDetector {
         val score = (60 + wickStrength * 20 + volumeStrength * 20).toInt().coerceIn(60, 100)
         return RangeDetectionResult(
             family, SetupStatus.CONFIRMED, direction, null, score,
-            "Rejection batas range dan konfirmasi candle 5M tertutup searah: $direction."
+            "RANGE_CONFIRMED | $diagnostics; triggerBodyATR=${fmt(triggerBodyAtr)}; triggerBreakoutATR=${fmt(triggerBreakoutAtr)}; direction=$direction"
         )
     }
 
-    private fun wait(reason: RangeWaitReason) = RangeDetectionResult(
+    private fun wait(reason: RangeWaitReason, diagnostics: String? = null) = RangeDetectionResult(
         RangeSetupFamily.NONE, SetupStatus.WAIT, AdaptiveDecision.WAIT, reason, 0,
-        "Belum ada reversal range terkonfirmasi: ${reason.name}."
+        "RANGE_WAIT_${reason.name}" + (diagnostics?.let { " | $it" } ?: "")
     )
+
+    private fun fmt(value: Double): String =
+        if (value.isFinite()) String.format(java.util.Locale.US, "%.3f", value) else "NA"
 
     private fun valid(candles: List<Candle>) = candles.all { c ->
         c.openTime >= 0L && c.closeTime > c.openTime &&
