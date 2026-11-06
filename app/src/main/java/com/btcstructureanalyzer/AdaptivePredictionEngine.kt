@@ -122,7 +122,7 @@ object AdaptivePredictionEngine {
         val diagnosticExplanation = if (selected.decision == AdaptiveDecision.WAIT) {
             when (regime) {
                 AdaptiveRegime.TREND -> "TREND_WAIT_${trend.waitReason ?: "UNKNOWN"}"
-                AdaptiveRegime.RANGE -> "RANGE_WAIT_${range.waitReason ?: "UNKNOWN"}"
+                AdaptiveRegime.RANGE -> range.explanation.ifBlank { "RANGE_WAIT_${range.waitReason ?: "UNKNOWN"}" }
                 else -> selected.explanation
             }
         } else {
