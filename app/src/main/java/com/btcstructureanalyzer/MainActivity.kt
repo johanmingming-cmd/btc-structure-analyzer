@@ -365,6 +365,7 @@ private fun AnalyzerApp(context: Context) {
                                     Text("Regime: ${it.regime} • Setup: ${it.setupFamily}", color = Muted, fontSize = 11.sp)
                                     Text("Alasan: ${it.reason}", color = Muted, fontSize = 11.sp)
                                 }
+                                val waitCountTotal = adaptiveRecords.count { it.decision == "WAIT" }
                                 val waitBreakdown = adaptiveRecords
                                     .filter { it.decision == "WAIT" }
                                     .groupingBy { it.explanation }
@@ -375,11 +376,12 @@ private fun AnalyzerApp(context: Context) {
                                 if (waitBreakdown.isNotEmpty()) {
                                     Divider(color = Color(0xFF24364A))
                                     Text("DIAGNOSTIK PENYEBAB WAIT", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                                    Text("Berdasarkan seluruh jurnal tersimpan", color = Muted, fontSize = 9.sp)
+                                    Text("Persentase dihitung dari seluruh keputusan WAIT", color = Muted, fontSize = 9.sp)
                                     waitBreakdown.forEach { entry ->
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                             Text(entry.key, color = Muted, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                                            Text(entry.value.toString(), color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            val percent = if (waitCountTotal > 0) entry.value * 100.0 / waitCountTotal else 0.0
+                                            Text("${entry.value} • ${String.format(Locale.US, "%.1f%%", percent)}", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
