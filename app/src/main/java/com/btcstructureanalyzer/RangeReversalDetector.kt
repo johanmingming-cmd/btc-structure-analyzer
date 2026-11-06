@@ -5,7 +5,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 enum class RangeSetupFamily { RANGE_SUPPORT_REJECTION, RANGE_RESISTANCE_REJECTION, NONE }
-enum class RangeWaitReason { REGIME_NOT_RANGE, INSUFFICIENT_DATA, NO_BOUNDARY_REJECTION, NO_5M_CONFIRMATION }
+enum class RangeWaitReason { REGIME_NOT_RANGE, INSUFFICIENT_DATA, NO_BOUNDARY_SWEEP, SWEEP_EXCEEDS_TOLERANCE, BOUNDARY_NOT_RECLAIMED, WEAK_REJECTION_WICK, SMALL_REJECTION_BODY, AMBIGUOUS_BOUNDARY_REJECTION, LOW_REJECTION_VOLUME, NO_5M_CONFIRMATION }
 
 data class RangeDetectionConfig(
     val atrPeriod: Int = 14,
@@ -57,14 +57,44 @@ object RangeReversalDetector {
         val volumeRatio = if (avgVolume > 0.0) last.volume / avgVolume else 0.0
         val maxSweep = atr15 * config.boundaryAtrTolerance
 
-        val supportReject = last.low < support && support - last.low <= maxSweep &&
-            last.close > support && lowerWick / body >= config.minimumWickBodyRatio &&
-            abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        val resistanceReject = last.high > resistance && last.high - resistance <= maxSweep &&
-            last.close < resistance && upperWick / body >= config.minimumWickBodyRatio &&
-            abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
-        if (supportReject == resistanceReject || volumeRatio < config.minimumVolumeRatio)
-            return wait(RangeWaitReason.NO_BOUNDARY_REJECTION)
+        val bodyStrong = abs(last.close - last.open) >= atr15 * config.minimumBodyAtr
+        data class BoundaryCheck(
+            val swept: Boolean,
+            val withinTolerance: Boolean,
+            val reclaimed: Boolean,
+            val wickStrong: Boolean
+        )
+        val supportCheck = BoundaryCheck(
+            swept = last.low < support,
+            withinTolerance = last.low < support && support - last.low <= maxSweep,
+            reclaimed = last.low < support && last.close > support,
+            wickStrong = lowerWick / body >= config.minimumWickBodyRatio
+        )
+        val resistanceCheck = BoundaryCheck(
+            swept = last.high > resistance,
+            withinTolerance = last.high > resistance && last.high - resistance <= maxSweep,
+            reclaimed = last.high > resistance && last.close < resistance,
+            wickStrong = upperWick / body >= config.minimumWickBodyRatio
+        )
+        fun BoundaryCheck.accepted() = swept && withinTolerance && reclaimed && wickStrong && bodyStrong
+
+        val supportReject = supportCheck.accepted()
+        val resistanceReject = resistanceCheck.accepted()
+        if (supportReject && resistanceReject)
+            return wait(RangeWaitReason.AMBIGUOUS_BOUNDARY_REJECTION)
+        if (!supportReject && !resistanceReject) {
+            val swept = listOf(supportCheck, resistanceCheck).filter { it.swept }
+            val reason = when {
+                swept.isEmpty() -> RangeWaitReason.NO_BOUNDARY_SWEEP
+                swept.none { it.withinTolerance } -> RangeWaitReason.SWEEP_EXCEEDS_TOLERANCE
+                swept.filter { it.withinTolerance }.none { it.reclaimed } -> RangeWaitReason.BOUNDARY_NOT_RECLAIMED
+                swept.filter { it.withinTolerance && it.reclaimed }.none { it.wickStrong } -> RangeWaitReason.WEAK_REJECTION_WICK
+                else -> RangeWaitReason.SMALL_REJECTION_BODY
+            }
+            return wait(reason)
+        }
+        if (volumeRatio < config.minimumVolumeRatio)
+            return wait(RangeWaitReason.LOW_REJECTION_VOLUME)
 
         val direction = if (supportReject) AdaptiveDecision.LONG else AdaptiveDecision.SHORT
         val atr5 = atr(candles5m, config.atrPeriod) ?: return wait(RangeWaitReason.INSUFFICIENT_DATA)
