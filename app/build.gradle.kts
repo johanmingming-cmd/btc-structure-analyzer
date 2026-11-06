@@ -12,8 +12,8 @@ android {
         applicationId = "com.predictionlab.analyzer"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.6.2-readable-diagnostics"
+        versionCode = 28
+        versionName = "1.6.3-range-diagnostics"
     }
     signingConfigs {
         create("release") {
