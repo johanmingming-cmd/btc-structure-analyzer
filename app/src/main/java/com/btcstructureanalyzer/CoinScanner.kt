@@ -43,6 +43,18 @@ data class ScanDiagnostics(
     val fifteenMinuteSideways: Int = 0,
     val fifteenMinuteUnconfirmed: Int = 0,
     val candidateTrendDetails: List<String> = emptyList(),
+    val adaptiveEvaluated: Int = 0,
+    val adaptiveLong: Int = 0,
+    val adaptiveShort: Int = 0,
+    val adaptiveWait: Int = 0,
+    val adaptiveAgree: Int = 0,
+    val adaptiveDisagree: Int = 0,
+    val adaptiveLegacyWait: Int = 0,
+    val adaptiveErrors: Int = 0,
+    val adaptiveSamples: List<String> = emptyList(),
+    val adaptiveRecordsSaved: Int = 0,
+    val adaptiveJournalTotal: Int = 0,
+    val adaptiveJournalError: String? = null,
     val lastError: String? = null
 )
 
@@ -98,6 +110,16 @@ class CoinScanner(private val repository: BinanceRepository, private val context
         var fifteenMinuteSideways = 0
         var fifteenMinuteUnconfirmed = 0
         val candidateTrendDetails = mutableListOf<String>()
+        var adaptiveEvaluated = 0
+        var adaptiveLong = 0
+        var adaptiveShort = 0
+        var adaptiveWait = 0
+        var adaptiveAgree = 0
+        var adaptiveDisagree = 0
+        var adaptiveLegacyWait = 0
+        var adaptiveErrors = 0
+        val adaptiveSamples = mutableListOf<String>()
+        val adaptiveShadows = mutableListOf<AdaptiveShadowRecord>()
         // Only include USDT perpetual contracts currently tradable on Binance USDⓈ-M Futures.
         val futuresSymbols = try { fetchTradableUsdtPerpetualSymbols() } catch (e: Exception) {
             lastDiagnostics = ScanDiagnostics(spotPairs = tickers.length(), lastError = "Futures whitelist: ${e.message ?: "gagal mengambil daftar"}")
@@ -128,6 +150,9 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             }
         }.sortedByDescending { it.third }.take(40)
 
+        // Freeze the completed 1h boundary before candle requests begin. A scan that
+        // crosses an hour boundary must not treat a pre-close partial 1h candle as closed.
+        val adaptiveDecisionTime = completedHourDecisionTime(System.currentTimeMillis())
         val output = mutableListOf<ScannedCoin>()
         for ((symbol, lastPrice, quoteVolume) in candidates) {
             try {
@@ -156,6 +181,41 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 candidateTrendDetails.add("$symbol • 1H: ${r1h.trend.name} [$swings1h] • 15M: ${r15.trend.name} [$swings15m]")
                 val sameBullish = r1h.trend == Trend.BULLISH && r15.trend == Trend.BULLISH
                 val sameBearish = r1h.trend == Trend.BEARISH && r15.trend == Trend.BEARISH
+                // Shadow-only: all three timeframes use one fixed completed-hour cutoff for this scan.
+                try {
+                    val legacyDirection = when {
+                        sameBullish -> AdaptiveDecision.LONG
+                        sameBearish -> AdaptiveDecision.SHORT
+                        else -> AdaptiveDecision.WAIT
+                    }
+                    // Anchor every prediction to the completed 1H close at the frozen decision boundary.
+                    // Do not use the live ticker price: scans can run several minutes after that boundary.
+                    val adaptiveReferencePrice = c1h.lastOrNull { it.closeTime < adaptiveDecisionTime }?.close
+                        ?: throw IllegalStateException("Harga referensi candle 1H tertutup tidak tersedia")
+                    val shadow = AdaptiveShadowEvaluator.evaluate(
+                        symbol, adaptiveReferencePrice, legacyDirection,
+                        AdaptiveEngineInput(adaptiveDecisionTime, c1h, c15, c5)
+                    )
+                    adaptiveShadows += shadow
+                    adaptiveEvaluated++
+                    when (shadow.adaptive.decision) {
+                        AdaptiveDecision.LONG -> adaptiveLong++
+                        AdaptiveDecision.SHORT -> adaptiveShort++
+                        AdaptiveDecision.WAIT -> adaptiveWait++
+                    }
+                    when (shadow.comparison) {
+                        ShadowComparison.AGREE -> adaptiveAgree++
+                        ShadowComparison.DISAGREE -> adaptiveDisagree++
+                        ShadowComparison.LEGACY_WAIT -> adaptiveLegacyWait++
+                        ShadowComparison.ADAPTIVE_WAIT -> Unit
+                    }
+                    if (adaptiveSamples.size < 12) adaptiveSamples.add(
+                        "${symbol}: ${shadow.comparison}, regime=${shadow.adaptive.regime}, " +
+                            "decision=${shadow.adaptive.decision}, reason=${shadow.adaptive.reason}"
+                    )
+                } catch (_: Exception) {
+                    adaptiveErrors++
+                }
                 when {
                     sameBullish -> bullishTrendPairs++
                     sameBearish -> bearishTrendPairs++
@@ -228,6 +288,22 @@ class CoinScanner(private val repository: BinanceRepository, private val context
                 dataErrors++
             }
         }
+        var adaptiveRecordsSaved = 0
+        var adaptiveJournalTotal = 0
+        var adaptiveJournalError: String? = null
+        try {
+            val existingAdaptiveIds = AdaptivePredictionJournal.read(context).map { it.id }.toSet()
+            adaptiveRecordsSaved = AdaptivePredictionJournal.record(context, adaptiveShadows)
+            val newlySavedSignals = adaptiveShadows
+                .map(AdaptivePredictionRecord::fromShadow)
+                .filter { it.id !in existingAdaptiveIds && (it.decision == "LONG" || it.decision == "SHORT") }
+            if (newlySavedSignals.isNotEmpty()) {
+                runCatching { AdaptiveSignalNotifier.notifyNewSignals(context, newlySavedSignals) }
+            }
+            adaptiveJournalTotal = AdaptivePredictionJournal.read(context).size
+        } catch (error: Exception) {
+            adaptiveJournalError = error.message ?: "Gagal menyimpan jurnal Adaptive"
+        }
         lastDiagnostics = ScanDiagnostics(
             spotPairs = tickers.length(),
             futuresWhitelist = futuresSymbols.size,
@@ -249,7 +325,19 @@ class CoinScanner(private val repository: BinanceRepository, private val context
             fifteenMinuteBearish = fifteenMinuteBearish,
             fifteenMinuteSideways = fifteenMinuteSideways,
             fifteenMinuteUnconfirmed = fifteenMinuteUnconfirmed,
-            candidateTrendDetails = candidateTrendDetails.toList()
+            candidateTrendDetails = candidateTrendDetails.toList(),
+            adaptiveEvaluated = adaptiveEvaluated,
+            adaptiveLong = adaptiveLong,
+            adaptiveShort = adaptiveShort,
+            adaptiveWait = adaptiveWait,
+            adaptiveAgree = adaptiveAgree,
+            adaptiveDisagree = adaptiveDisagree,
+            adaptiveLegacyWait = adaptiveLegacyWait,
+            adaptiveErrors = adaptiveErrors,
+            adaptiveSamples = adaptiveSamples.toList(),
+            adaptiveRecordsSaved = adaptiveRecordsSaved,
+            adaptiveJournalTotal = adaptiveJournalTotal,
+            adaptiveJournalError = adaptiveJournalError
         )
         val finalResults = output.sortedWith(compareByDescending<ScannedCoin> { it.score }.thenByDescending { it.quoteVolume }).take(limit.coerceAtLeast(1))
         SignalJournal.recordSignals(context, finalResults)
@@ -337,4 +425,11 @@ internal fun calculateCandidateRankingScore(
         ?.let { (it / 1.0 * 5.0).coerceIn(0.0, 5.0) } ?: 2.5
     return (50.0 + liquidityScore + momentumScore + volumeExpansionScore + roomScore)
         .toInt().coerceIn(50, 100)
+}
+
+
+/** Decision cutoff for a shadow evaluation: one millisecond after the latest completed UTC hour. */
+internal fun completedHourDecisionTime(nowMillis: Long): Long {
+    require(nowMillis > 0L) { "Current time must be positive" }
+    return nowMillis / 3_600_000L * 3_600_000L + 1L
 }

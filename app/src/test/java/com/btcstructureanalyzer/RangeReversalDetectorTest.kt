@@ -23,6 +23,8 @@ class RangeReversalDetectorTest {
             SetupStatus.CONFIRMED, result.status)
         assertEquals(RangeSetupFamily.RANGE_SUPPORT_REJECTION, result.family)
         assertEquals(AdaptiveDecision.LONG, result.direction)
+        assert(result.explanation.contains("triggerBodyATR="))
+        assert(result.explanation.contains("triggerBreakoutATR="))
     }
 
     @Test fun rejectsDeepBoundaryBreakInsteadOfCallingItRejection() {
@@ -30,7 +32,25 @@ class RangeReversalDetectorTest {
         m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 95.0, 100.3, 1400.0, 31)
         val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
         assertEquals(SetupStatus.WAIT, result.status)
-        assertEquals(RangeWaitReason.NO_BOUNDARY_REJECTION, result.waitReason)
+        assertEquals(RangeWaitReason.SWEEP_EXCEEDS_TOLERANCE, result.waitReason)
+    }
+
+    @Test fun reportsNoBoundarySweepSeparately() {
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, base15(), base5())
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.NO_BOUNDARY_SWEEP, result.waitReason)
+        assert(result.explanation.startsWith("RANGE_WAIT_NO_BOUNDARY_SWEEP |"))
+        assert(result.explanation.contains("supportSweepATR="))
+        assert(result.explanation.contains("lowerWickBody="))
+        assert(result.explanation.contains("volumeRatio="))
+    }
+
+    @Test fun reportsMissingFiveMinuteTriggerSeparately() {
+        val m15 = base15()
+        m15[m15.lastIndex] = Candle(30, 100.0, 101.0, 98.8, 100.3, 1400.0, 31)
+        val result = RangeReversalDetector.detect(AdaptiveRegime.RANGE, m15, base5())
+        assertEquals(SetupStatus.WAIT, result.status)
+        assertEquals(RangeWaitReason.NO_5M_CONFIRMATION, result.waitReason)
     }
 
     @Test fun rejectsInvertedHighLowRange() {
