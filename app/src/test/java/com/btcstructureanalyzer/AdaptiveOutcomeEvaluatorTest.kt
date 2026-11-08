@@ -48,4 +48,53 @@ class AdaptiveOutcomeEvaluatorTest {
         assertEquals(0, summary.pending)
         assertNull(AdaptiveOutcomeEvaluator.summarize(listOf(wait), emptyList(), 4_000_000L).first().hitRatePercent)
     }
+    @Test
+    fun outcomeExportIncludesPendingAndNotDueHorizonsAndSummary() {
+        val prediction = AdaptivePredictionRecord(
+            id = "ZECUSDT-1000", symbol = "ZECUSDT", decisionTime = 1_000L,
+            referencePrice = 100.0, legacyDirection = "WAIT", decision = "LONG",
+            regime = "RANGE", reason = "RANGE_REVERSAL_CONFIRMED", atrPercent = 1.0,
+            volatilityExpansion = 1.0, efficiencyRatio = 0.5, normalizedSlope = 0.2,
+            explanation = "confirmed", setupFamily = "RANGE_REVERSAL", qualityScore = 88,
+            engineVersion = "test"
+        )
+        val outcome = AdaptiveOutcomeRecord(
+            id = "ZECUSDT-1000-1h", predictionId = prediction.id, symbol = prediction.symbol,
+            decision = "LONG", horizonHours = 1, targetTime = 3_601_000L,
+            referencePrice = 100.0, evaluatedPrice = 101.0, evaluatedAt = 3_600_999L,
+            signedReturnPercent = 1.0, result = "HIT"
+        )
+        val now = 4_000_000L
+        val csv = SignalExport.adaptiveOutcomesCsv(listOf(prediction), listOf(outcome), now)
+        assertEquals(true, csv.contains("HIT"))
+        assertEquals(true, csv.contains("PENDING"))
+        assertEquals(true, csv.contains("NOT_DUE"))
+
+        val json = SignalExport.adaptiveOutcomesJson(listOf(prediction), listOf(outcome), now)
+        val summaries = json.getJSONArray("summaries")
+        val oneHour = summaries.getJSONObject(0)
+        assertEquals(1, oneHour.getInt("eligible"))
+        assertEquals(1, oneHour.getInt("evaluated"))
+        assertEquals(1, oneHour.getInt("hits"))
+        assertEquals(0, oneHour.getInt("pending"))
+        assertEquals(3, json.getJSONArray("outcomes").length())
+    }
+
+    @Test
+    fun outcomeExportExcludesWaitPredictions() {
+        val wait = AdaptivePredictionRecord(
+            id = "BTCUSDT-1000", symbol = "BTCUSDT", decisionTime = 1_000L,
+            referencePrice = 100.0, legacyDirection = "WAIT", decision = "WAIT",
+            regime = "RANGE", reason = "NO_BOUNDARY_SWEEP", atrPercent = 1.0,
+            volatilityExpansion = 1.0, efficiencyRatio = 0.5, normalizedSlope = 0.2,
+            explanation = "wait", setupFamily = "NONE", qualityScore = 0,
+            engineVersion = "test"
+        )
+        val csv = SignalExport.adaptiveOutcomesCsv(listOf(wait), emptyList(), 9_000_000L)
+        assertEquals(1, csv.lines().size)
+        val json = SignalExport.adaptiveOutcomesJson(listOf(wait), emptyList(), 9_000_000L)
+        assertEquals(0, json.getInt("prediction_count"))
+        assertEquals(0, json.getJSONArray("outcomes").length())
+    }
+
 }
