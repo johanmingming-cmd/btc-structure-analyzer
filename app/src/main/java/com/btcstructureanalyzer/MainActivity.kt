@@ -133,7 +133,9 @@ private fun AnalyzerApp(context: Context) {
                         val recordsForExport = SignalJournal.read(context)
                         val output = context.contentResolver.openOutputStream(uri, "w")
                             ?: throw IllegalStateException("Tidak bisa membuka file tujuan")
-                        output.use { SignalExport.writeZip(it, recordsForExport, AdaptivePredictionJournal.read(context)) }
+                        val adaptiveForExport = AdaptivePredictionJournal.read(context)
+                        val outcomesForExport = AdaptiveOutcomeEvaluator.read(context)
+                        output.use { SignalExport.writeZip(it, recordsForExport, adaptiveForExport, outcomesForExport) }
                     }
                     exportMessage = "Export ZIP berhasil disimpan. Jurnal lokal tidak diubah."
                 } catch (e: Exception) {
