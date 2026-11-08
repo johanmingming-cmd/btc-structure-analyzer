@@ -183,7 +183,7 @@ object SignalExport {
             .put("predictions", rows)
     }
 
-    private fun adaptiveOutcomesCsv(
+    internal fun adaptiveOutcomesCsv(
         predictions: List<AdaptivePredictionRecord>,
         outcomes: List<AdaptiveOutcomeRecord>,
         exportedAt: Long
@@ -212,7 +212,7 @@ object SignalExport {
         }
     }
 
-    private fun adaptiveOutcomesJson(
+    internal fun adaptiveOutcomesJson(
         predictions: List<AdaptivePredictionRecord>,
         outcomes: List<AdaptiveOutcomeRecord>,
         exportedAt: Long
